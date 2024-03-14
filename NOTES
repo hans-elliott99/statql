@@ -1,0 +1,9 @@
+
+
+# Installed sqlite via:
+# wget https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip
+# unzip sqlite-amalgamation-3450200.zip
+
+# Necessary linked libraries determined from:
+# https://www.sqlite.org/howtocompile.html
+#
