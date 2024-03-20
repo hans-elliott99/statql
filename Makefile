@@ -1,5 +1,5 @@
 SRC_DIR := ./src
-OBJ_DIR := ./bin
+OBJ_DIR := ./obj
 BIN_DIR := .
 INCLUDE_DIR := ./src #eventually put headers in include/, in src for intellisense
 TEST_DIR := ./tests
@@ -44,12 +44,14 @@ $(BIN_DIR) $(OBJ_DIR):
 	mkdir -p $@
 
 clean:
-	rm -f $(OBJ_DIR)/*.o
-	rm -f $(OBJ_DIR)/*.d
-#	rm -f $(TARGET)
-	rm -f $(BIN_DIR)/test
+	rm -f  $(OBJ_DIR)/*.o
+	rm -f  $(OBJ_DIR)/*.d
+	rm -rf $(TARGET)
+	rm -rf $(BIN_DIR)/test
 
--include $(OBJ:.o=.d)
+clean-sqlite:
+	find $(OBJ_DIR) -type f -name "*.o" -delete
+	find $(OBJ_DIR) -type f -name "*.d" -delete
 
 
 # I like this makefile: https://stackoverflow.com/questions/30573481/how-to-write-a-makefile-with-separate-source-and-header-directories
