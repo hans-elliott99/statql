@@ -1,9 +1,31 @@
 
 
 # Installed sqlite via:
-# wget https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip
-# unzip sqlite-amalgamation-3450200.zip
+wget https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip
+unzip sqlite-amalgamation-3450200.zip
 
-# Necessary linked libraries determined from:
-# https://www.sqlite.org/howtocompile.html
-#
+Necessary linked libraries for sqlite determined from:
+https://www.sqlite.org/howtocompile.html
+
+
+
+Vectors:  
+The key data structure for this program is a "vector" which is inspired by R vectors, in that most objects needed for math operations can be treated as a vector.  
+(They are actually fixed length currently but will probably become dynamic vectors eventually... but more often than not for mathematical/statistical operations we know the size of inputs and outputs and can preallocate).  
+
+Further inspired by R, the vector API is built around the VECP struct, which is essentially just a pointer to the actual vector data (sort of equivalent to R's SEXP). The actual data is stored in the VectorStruct (sort of equivalent to R's SEXPREC), which can be either an INTS_VEC, DOUBLES_VEC, or STRINGS_VEC, and data is accessed using public functions.  
+
+Vector allocation is done on a global memory stack ("memstack") which is a linked list of memory blocks. This makes it easier to free all memory at the end of the program and helps the API because it allows functions to return VECP "objects" to the user. A vector can still be freed by the user when a vector is no longer needed.  
+
+
+Matrices:  
+Matrices are fundamentally just vectors with additional dimension information. The actual data is still stored in the VectorStruct, and an element can be accessed using indexing i * ncols + j. All VECP have nrows and ncols fields but they are set to 0 for vectors and >0 for matrices.  
+
+Should we use VECP for matrices too? Could have nrow and ncol fields and just keep nrow = 0 for vectors...
+
+then element wise vector operations would apply as element wise operations for matrices too...  
+i.e., vectors are special cases of matrices.
+
+
+TODO:
+https://stackoverflow.com/questions/1923837/how-to-use-nan-and-inf-in-c

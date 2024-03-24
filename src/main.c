@@ -2,6 +2,7 @@
 #include <stdlib.h> // calloc
 #include <string.h> // strcmp
 #include <stdarg.h> // va_list, va_start, va_end
+#include <math.h> // sqrt
 #include "sqlite/sqlite3.h"
 
 #include "global.h"
@@ -53,7 +54,7 @@ int main2() {
     dllist_remove(&memstack, v2.node);
     printf("len: %zu\n", memstack.len);
 
-    free_vector(v3);
+    free_vector(&v3);
     printf("len: %zu\n", memstack.len);
     return 0;
 }
@@ -251,8 +252,8 @@ void init_sqlite_table(const char *dbpath,
 
 void free_sqlite_table(void) {
     printf("\nFreeing sqlite_table...\n");
-    free_vector(tab.colnames);
-    free_vector(tab.coltypes);
+    free_vector(&tab.colnames);
+    free_vector(&tab.coltypes);
     chk_free(tab.name);
     chk_free(tab.dbpath);
     printf("\nClosing database connection...\n");
@@ -279,31 +280,214 @@ size_t which_str(VECP v, const char *str) {
     return LENGTH(v);
 }
 
-void fill_dbl(VECP v, double val) {
+
+
+// VECTOR EXTENSIONS
+
+/*allocated with same dimensions as example, so maintains matrix attributes*/
+VECP alloc_same(const VECP v, vectype_t type) {
+    VECP v2 = alloc_vector(LENGTH(v), type);
+    v2.ncols = v.ncols;
+    v2.nrows = v.nrows;
+    return v2;
+}
+
+VECP copyvec(const VECP v) {
+    VECP v2 = alloc_same(v, TYPEOF(v));
+    switch (TYPEOF(v)) {
+    case INTS_VEC:
+        for (size_t i = 0; i < LENGTH(v); ++i) {
+            INTEGER(v2)[i] = INTEGER(v)[i];
+        }
+        break;
+    case DOUBLES_VEC:
+        for (size_t i = 0; i < LENGTH(v); ++i) {
+            DOUBLE(v2)[i] = DOUBLE(v)[i];
+        }
+        break;
+    case STRINGS_VEC:
+        for (size_t i = 0; i < LENGTH(v); ++i) {
+            set_strings_elt(v2, i, STRING_ELT(v, i));
+        }
+        break;
+    default:
+        break;
+    }
+    return v2;
+}
+
+
+
+VECP add_dbl(VECP v, double scalar) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) + scalar);
+    }
+    return v2;
+}
+
+VECP set_add_dbl(VECP v, double scalar) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, as_double(v, i) + scalar);
+    }
+    return v;
+}
+
+VECP mul_dbl(VECP v, double scalar) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) * scalar);
+    }
+    return v2;
+}
+
+VECP set_mul_dbl(VECP v, double scalar) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, as_double(v, i) * scalar);
+    }
+    return v;
+}
+
+VECP div_dbl(VECP v, double scalar) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) / scalar);
+    }
+    return v2;
+}
+
+VECP set_div_dbl(VECP v, double scalar) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, as_double(v, i) / scalar);
+    }
+    return v;
+}
+
+VECP pow2(VECP v) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) * as_double(v, i));
+    }
+    return v2;
+}
+
+VECP set_pow2(VECP v) {
+    CAST_DOUBLE(v); // in case input is an int vector
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, as_double(v, i) * as_double(v, i));
+    }
+    return v;
+}
+
+VECP vsqrt(VECP v) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, sqrt(as_double(v, i)));
+    }
+    return v2;
+}
+
+VECP set_vsqrt(VECP v) {
+    CAST_DOUBLE(v); // in case input is an int vector
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, sqrt(as_double(v, i)));
+    }
+    return v;
+}
+
+
+VECP set_fill_dbl(VECP v, double val) {
     for (size_t i = 0; i < LENGTH(v); ++i) {
         set_doubles_elt(v, i, val);
     }
+    return v;
 }
 
-void fill_int(VECP v, int val) {
+VECP set_fill_dbl_rng(VECP v, double start, double step) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, start + i * step);
+    }
+    return v;
+}
+
+VECP add_int(VECP v, int scalar) {
+    VECP v2 = alloc_same(v, INTS_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v2, i, as_int(v, i) + scalar);
+    }
+    return v2;
+}
+
+VECP set_add_int(VECP v, int scalar) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v, i, as_int(v, i) + scalar);
+    }
+    return v;
+}
+
+VECP mul_int(VECP v, int scalar) {
+    VECP v2 = alloc_same(v, INTS_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v2, i, as_int(v, i) * scalar);
+    }
+    return v2;
+}
+
+VECP set_mul_int(VECP v, int scalar) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v, i, as_int(v, i) * scalar);
+    }
+    return v;
+}
+
+VECP set_fill_int(VECP v, int val) {
     for (size_t i = 0; i < LENGTH(v); ++i) {
         set_ints_elt(v, i, val);
     }
+    return v;
+}
+
+VECP set_fill_str(VECP v, const char *val) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_strings_elt(v, i, val);
+    }
+    return v;
+}
+
+VECP reciprocal(VECP v) {
+    VECP v2 = alloc_same(v, DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, 1.0 / as_double(v, i));
+    }
+    return v2;
+}
+
+VECP set_reciprocal(VECP v) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, 1.0 / as_double(v, i));
+    }
+    return v;
 }
 
 
-VECP addvec(VECP v1, VECP v2) {
+VECP __add(VECP v1, VECP v2, int inplace) {
     size_t n1 = LENGTH(v1);
     size_t n2 = LENGTH(v2);
     if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
-        fprintf(stderr, "addvec: not implemented for STRINGS_VEC\n");
+        fprintf(stderr, "__add: not implemented for STRINGS_VEC\n");
         exit(1);
     }
     if (n1 != n2 && n1 != 1 && n2 != 1) {
-        fprintf(stderr, "addvec: lengths are not compatible\n");
+        fprintf(stderr, "__add: lengths are not compatible\n");
         exit(1);
     }
-    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    VECP v3;
+    if (inplace) {
+        CAST_DOUBLE(v1);
+        v3 = v1;
+    } else {
+        v3 = alloc_same(n1 > n2 ? v1 : v2, DOUBLES_VEC);
+    }
     if (n1 > n2) {
         // n2 is the scalar
         for (size_t i = 0; i < n1; ++i) {
@@ -324,50 +508,33 @@ VECP addvec(VECP v1, VECP v2) {
     return v3;
 }
 
+VECP add(VECP v1, VECP v2) {
+    return __add(v1, v2, 0);
+}
 
-/*add v2 to v1, in place*/
-VECP addveci(VECP v1, VECP v2) {
-    size_t n1 = LENGTH(v1);
-    size_t n2 = LENGTH(v2);
-    if (TYPEOF(v1) == INTS_VEC) {
-        CAST_DOUBLE(v1);
-    }
-    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
-        fprintf(stderr, "addvec: not implemented for STRINGS_VEC\n");
-        exit(1);
-    }
-    if (n1 != n2 && n2 != 1) {
-        fprintf(stderr, "addvec: lengths are not compatible\n");
-        exit(1);
-    }
-    if (n1 > n2) {
-        // n2 is the scalar
-        for (size_t i = 0; i < n1; ++i) {
-            // as_double casts integer vector data to double
-            DOUBLE(v1)[i] = as_double(v1, i) + as_double(v2, 0);
-        }
-    } else {
-        // both vectors, equal length
-        for (size_t i = 0; i < n1; ++i) {
-            DOUBLE(v1)[i] = as_double(v1, i) + as_double(v2, i);
-        }
-    }
-    return v1;
+VECP set_add(VECP v1, VECP v2) {
+    return __add(v1, v2, 1);
 }
 
 
-VECP mulvec(VECP v1, VECP v2) {
+VECP __mul(VECP v1, VECP v2, int inplace) {
     size_t n1 = LENGTH(v1);
     size_t n2 = LENGTH(v2);
     if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
-        fprintf(stderr, "mulvec: not implemented for STRINGS_VEC\n");
+        fprintf(stderr, "__mul: not implemented for STRINGS_VEC\n");
         exit(1);
     }
     if (n1 != n2 && n1 != 1 && n2 != 1) {
-        fprintf(stderr, "mulvec: lengths are not compatible\n");
+        fprintf(stderr, "__mul: lengths are not compatible\n");
         exit(1);
     }
-    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    VECP v3;
+    if (inplace) {
+        CAST_DOUBLE(v1);
+        v3 = v1;
+    } else {
+        v3 = alloc_same(n1 > n2 ? v1 : v2, DOUBLES_VEC);
+    }
     if (n1 > n2) {
         // n2 is the scalar
         for (size_t i = 0; i < n1; ++i) {
@@ -388,18 +555,34 @@ VECP mulvec(VECP v1, VECP v2) {
     return v3;
 }
 
-VECP divvec(VECP v1, VECP v2) {
+VECP mul(VECP v1, VECP v2) {
+    return __mul(v1, v2, 0);
+}
+
+VECP set_mul(VECP v1, VECP v2) {
+    return __mul(v1, v2, 1);
+}
+
+
+
+VECP __div(VECP v1, VECP v2, int inplace) {
     size_t n1 = LENGTH(v1);
     size_t n2 = LENGTH(v2);
     if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
-        fprintf(stderr, "divvec: not implemented for STRINGS_VEC\n");
+        fprintf(stderr, "__div: not implemented for STRINGS_VEC\n");
         exit(1);
     }
     if (n1 != n2 && n1 != 1 && n2 != 1) {
-        fprintf(stderr, "divvec: lengths are not compatible\n");
+        fprintf(stderr, "__div: lengths are not compatible\n");
         exit(1);
     }
-    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    VECP v3;
+    if (inplace) {
+        CAST_DOUBLE(v1);
+        v3 = v1;
+    } else {
+        v3 = alloc_same(n1 > n2 ? v1 : v2, DOUBLES_VEC);
+    }
     if (n1 > n2) {
         // n2 is the scalar
         for (size_t i = 0; i < n1; ++i) {
@@ -420,98 +603,105 @@ VECP divvec(VECP v1, VECP v2) {
     return v3;
 }
 
-VECP add_dbl(VECP v, double scalar) {
-    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
-    for (size_t i = 0; i < LENGTH(v); ++i) {
-        set_doubles_elt(v2, i, as_double(v, i) + scalar);
-    }
-    return v2;
+VECP divide(VECP v1, VECP v2) {
+    return __div(v1, v2, 0);
 }
 
-VECP mul_dbl(VECP v, double scalar) {
-    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
-    for (size_t i = 0; i < LENGTH(v); ++i) {
-        set_doubles_elt(v2, i, as_double(v, i) * scalar);
-    }
-    return v2;
-}
-
-VECP add_int(VECP v, int scalar) {
-    VECP v2 = alloc_vector(LENGTH(v), INTS_VEC);
-    for (size_t i = 0; i < LENGTH(v); ++i) {
-        set_ints_elt(v2, i, as_int(v, i) + scalar);
-    }
-    return v2;
-}
-
-VECP mul_int(VECP v, int scalar) {
-    VECP v2 = alloc_vector(LENGTH(v), INTS_VEC);
-    for (size_t i = 0; i < LENGTH(v); ++i) {
-        set_ints_elt(v2, i, as_int(v, i) * scalar);
-    }
-    return v2;
-}
-
-VECP reciprocal(VECP v) {
-    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
-    for (size_t i = 0; i < LENGTH(v); ++i) {
-        set_doubles_elt(v2, i, 1.0 / as_double(v, i));
-    }
-    return v2;
+VECP set_divide(VECP v1, VECP v2) {
+    return __div(v1, v2, 1);
 }
 
 
-typedef struct MATP {
-    struct DLNode *node;
-    size_t nrows;
-    size_t ncols;
-} MATP;
-
-MATP alloc_matrix(size_t nrows, size_t ncols) {
-    MATP m;
-    m.node = chk_malloc(sizeof(struct DLNode));
-    m.node->vec = chk_malloc(sizeof(VectorStruct));
-    alloc_vector_struct(m.node->vec, nrows * ncols, DOUBLES_VEC);
+VECP alloc_matrix(size_t nrows, size_t ncols) {
+    VECP m = alloc_vector(nrows * ncols, DOUBLES_VEC);
     m.nrows = nrows;
     m.ncols = ncols;
-    dllist_append(&memstack, m.node);
     return m;
 }
 
-MATP free_matrix(MATP m) {
-    dllist_remove(&memstack, m.node);
-    return m;
+size_t nrow(const VECP v) {
+    return v.nrows;
 }
 
-double MATRIX_ELT(MATP m, size_t i, size_t j) {
-    return m.node->vec->doubles[i * m.ncols + j];
+size_t ncol(const VECP v) {
+    return v.ncols;
 }
 
-void SET_MATRIX_ELT(MATP m, size_t i, size_t j, double val) {
-    m.node->vec->doubles[i * m.ncols + j] = val;
+VECP set_asmatrix(VECP v, size_t nrows, size_t ncols) {
+    if (LENGTH(v) != nrows * ncols) {
+        fprintf(stderr, "as_matrix: lengths are not compatible\n");
+        exit(1);
+    }
+    CAST_DOUBLE(v); // in case input is an int vector
+    v.ncols = ncols;
+    v.nrows = nrows;
+    return v;
 }
 
-VECP MATRIX_ROW(MATP m, size_t i) {
+VECP set_asvector(VECP v) {
+    if (v.ncols == 0)
+        return v; // already a vector
+    v.nrows = 0;
+    v.ncols = 0;
+    return v;
+}
+
+void free_matrix(VECP *m) {
+    free_vector(m);
+}
+
+int is_matrix(const VECP m) {
+    if (m.ncols > 0 && m.nrows > 0)
+        return 1;
+    return 0;
+}
+
+void assert_matrix(const VECP m) {
+    if (m.ncols == 0) {
+        fprintf(stderr, "assert_matrix: ncols == 0, not a matrix\n");
+        exit(1);
+    } else if (TYPEOF(m) != DOUBLES_VEC) {
+        fprintf(stderr, "assert_matrix: type != DOUBLES_VEC, not a matrix\n");
+        exit(1);
+    }
+}
+
+double MATRIX_ELT(const VECP m, size_t i, size_t j) {
+    assert_matrix(m);
+    return DOUBLE(m)[i * m.ncols + j];
+}
+
+void SET_MATRIX_ELT(VECP m, size_t i, size_t j, double val) {
+    assert_matrix(m);
+    DOUBLE(m)[i * m.ncols + j] = val;
+}
+
+VECP MATRIX_ROW(const VECP m, size_t i) {
+    assert_matrix(m);
     VECP row = alloc_vector(m.ncols, DOUBLES_VEC);
     size_t rowstart = i * m.ncols;
     for (size_t j = 0; j < m.ncols; ++j) {
-        set_doubles_elt(row, j, m.node->vec->doubles[rowstart + j]);
+        set_doubles_elt(row, j, DOUBLE(m)[rowstart + j]);
     }
     return row;
 }
 
-double *MATRIX_ROW_PTR(MATP m, size_t i) {
-    return m.node->vec->doubles + i * m.ncols;
+/*use ncols as upper index boundary*/
+double *MATRIX_ROW_PTR(const VECP m, size_t i) {
+    assert_matrix(m);
+    return DOUBLE(m) + i * m.ncols;
 }
 
-void SET_MATRIX_ROW(MATP m, size_t i, double *row) {
+void SET_MATRIX_ROW(VECP m, size_t i, const double *row) {
+    assert_matrix(m);
     size_t rowstart = i * m.ncols;
     for (size_t j = 0; j < m.ncols; ++j) {
-        m.node->vec->doubles[rowstart + j] = row[j];
+        DOUBLE(m)[rowstart + j] = row[j];
     }
 }
 
-VECP MATRIX_COL(MATP m, size_t j) {
+VECP MATRIX_COL(const VECP m, size_t j) {
+    assert_matrix(m);
     VECP col = alloc_vector(m.nrows, DOUBLES_VEC);
     for (size_t i = 0; i < m.nrows; ++i) {
         set_doubles_elt(col, i, MATRIX_ELT(m, i, j));
@@ -519,29 +709,20 @@ VECP MATRIX_COL(MATP m, size_t j) {
     return col;
 }
 
-void SET_MATRIX_COL(MATP m, size_t j, double *col) {
+void SET_MATRIX_COL(VECP m, size_t j, const double *col) {
+    assert_matrix(m);
     for (size_t i = 0; i < m.nrows; ++i) {
         SET_MATRIX_ELT(m, i, j, col[i]);
     }
 }
 
 
-
-void fill_matrix(MATP m, double val) {
-    for (size_t i = 0; i < m.nrows; ++i) {
-        for (size_t j = 0; j < m.ncols; ++j) {
-            SET_MATRIX_ELT(m, i, j, val);
-        }
-    }
-}
-
-
-MATP matmul(MATP m1, MATP m2) {
+VECP matmul(const VECP m1, const VECP m2) {
     if (m1.ncols != m2.nrows) {
         fprintf(stderr, "matmul: m1.ncols != m2.nrows\n");
         exit(1);
     }
-    MATP m3 = alloc_matrix(m1.nrows, m2.ncols);
+    VECP m3 = alloc_matrix(m1.nrows, m2.ncols);
     for (size_t i = 0; i < m1.nrows; ++i) {
         for (size_t j = 0; j < m2.ncols; ++j) {
             double sum = 0;
@@ -554,8 +735,20 @@ MATP matmul(MATP m1, MATP m2) {
     return m3;
 }
 
-MATP transpose(MATP m) {
-    MATP mt = alloc_matrix(m.ncols, m.nrows);
+VECP set_matmul(VECP m1, const VECP m2) {
+    VECP m3 = matmul(m1, m2);
+    m1.nrows = m3.nrows;
+    m1.ncols = m3.ncols;
+    for (size_t i = 0; i < LENGTH(m1); ++i) {
+        DOUBLE(m1)[i] = DOUBLE(m3)[i];
+    }
+    free_matrix(&m3);
+    return m1;
+}
+
+
+VECP transp(const VECP m) {
+    VECP mt = alloc_matrix(m.ncols, m.nrows);
     for (size_t i = 0; i < m.nrows; ++i) {
         for (size_t j = 0; j < m.ncols; ++j) {
             SET_MATRIX_ELT(mt, j, i, MATRIX_ELT(m, i, j));
@@ -564,28 +757,169 @@ MATP transpose(MATP m) {
     return mt;
 }
 
+VECP set_transp(VECP m) {
+    size_t n = nrow(m);
+    size_t p = ncol(m);
+    // special cases, avoid allocating temporary matrix
+    if (n == 0 || n == 1) {
+        // vector (not yet a matrix) or row vector
+        CAST_DOUBLE(m); // in case input is an int vector
+        m.ncols = 1;
+        m.nrows = p;
+        return m;
+    } else if (p == 1) {
+        // column vector
+        m.ncols = n;
+        m.nrows = 1;
+        return m;
+    }
+    // else matrix
+    VECP mt = transp(m);
+    m.nrows = mt.nrows;
+    m.ncols = mt.ncols;
+    for (size_t i = 0; i < LENGTH(m); ++i) {
+        DOUBLE(m)[i] = DOUBLE(mt)[i];
+    }
+    free_matrix(&mt);
+    return m;
+}
 
-void print_matrix(MATP m) {
-    for (size_t i = 0; i < m.nrows; ++i) {
-        for (size_t j = 0; j < m.ncols; ++j) {
-            printf("%f\t", MATRIX_ELT(m, i, j));
+
+VECP crossprod(const VECP m1, const VECP m2) {
+    VECP mt = transp(m1);
+    set_matmul(mt, m2);
+    return mt;
+}
+
+VECP crossprodt(const VECP m1, const VECP m2) {
+    VECP mt = transp(m2);
+    set_matmul(m1, mt);
+    return mt;
+}
+
+
+void print_matrix(const VECP m) {
+    // if not matrix, print vector horizontally
+    size_t nrow = (m.nrows) ? m.nrows : 1;
+    size_t ncol = (m.ncols) ? m.ncols : LENGTH(m);
+    for (size_t i = 0; i < nrow; ++i) {
+        for (size_t j = 0; j < ncol; ++j) {
+            printf("%f\t", DOUBLE(m)[i * m.ncols + j]);
         }
         putchar('\n');
     }
 }
 
+
+VECP backsolve_upperright(const VECP R, const VECP y) {
+    size_t m = ncol(R);
+    VECP beta = alloc_vector(m, DOUBLES_VEC);
+    double summ;
+    for (size_t j = m; j > 0; --j) {
+        summ = as_double(y, j - 1);
+        for (size_t i = j; i < m; ++i) {
+            summ -= MATRIX_ELT(R, j - 1, i) * as_double(beta, i);
+        }
+        DOUBLE(beta)[j - 1] = summ / MATRIX_ELT(R, j - 1, j - 1);
+    }
+    return beta;
+}
+
+/*
+    qr decomposition for least squares estimates
+    TODO: allow for Weight matrix
+    TODO: check for rank deficiency
+    TODO: matrix inversion to calculate SEs... (R^t R)^-1
+*/
 int main() {
     init_memstack();
-    // test matrix
+    const double data[12] = {1.,2.,3.,1.,3.,9.,1.,9.,10.,1.,4.,5.};
+    const VECP X = alloc_matrix(4, 3);
+        for (size_t i = 0; i < LENGTH(X); ++i) DOUBLE(X)[i] = data[i]; 
+    printf("X:\n"); print_matrix(X); putchar('\n');
+    const VECP y = alloc_vector(4, DOUBLES_VEC); set_fill_dbl(y, 1);
+        for (size_t i = 0; i < LENGTH(y); ++i) DOUBLE(y)[i] = i + 1;
+    printf("y:\n"); print_matrix(y); putchar('\n');
+// void qr_decomp(const VECP X, const VECP y, VECP *Qin, VECP *Rin) {
+    assert_matrix(X);
+    VECP ymat;
+    if (is_matrix(y)) {
+        ymat = y;
+    } else {
+        ymat = copyvec(y);
+        ymat = set_asmatrix(ymat, nrow(X), 1);
+    }
+    size_t n = nrow(X);
+    size_t p = ncol(X);
+    VECP Q; // = *Qin;
+    Q = alloc_matrix(n, p);
+    VECP R; // = *Rin;
+    R = alloc_matrix(p, p);
+
+    printf("1: memstack.len: %zu\n", memstack.len);
+    VECP v, u, Rij, tmp;
+    double val;
+    for (size_t j = 0; j < p; ++j) {
+        printf("=====================================\n");
+        printf("2: memstack.len: %zu\n", memstack.len);
+        v = set_asmatrix(MATRIX_COL(X, j), n, 1); // n x 1
+        u = copyvec(v);
+        if (j > 0) {
+            for (size_t i = 0; i < j; ++i) {
+                // calculate R[i, j]
+                Rij = set_matmul(set_asmatrix(MATRIX_COL(Q, i), 1, n), // get transpose of col (1 x n)
+                                 v); // 1 x n  X  n x 1
+                val = DOUBLE(Rij)[0];
+                SET_MATRIX_ELT(R, i, j, val);
+                free_vector(&Rij);
+                // update u = u + (- R[i, j] * Q[, i])
+                tmp = MATRIX_COL(Q, i);
+                set_add(u, set_mul_dbl(tmp, -val));
+                free_vector(&tmp);
+            }
+        }
+        // calculate R[j, j]
+        printf("u:\n"); print_matrix(u); putchar('\n');
+        tmp = set_vsqrt(crossprod(u, u)); // 1 x n  X  n x 1
+        val = DOUBLE(tmp)[0];
+        SET_MATRIX_ELT(R, j, j, val);
+        printf("R_jj: %f\n", val);
+        // calculate Q[, j]
+        SET_MATRIX_COL(Q, j, DOUBLE(set_div_dbl(u, val)));
+        free_vector(&tmp);
+        free_vector(&v);
+        free_vector(&u);
+    }
     printf("memstack.len: %zu\n", memstack.len);
-    MATP m1 = alloc_matrix(3, 3);
+    printf("Q:\n"); print_matrix(Q); putchar('\n');
+    printf("R:\n"); print_matrix(R); putchar('\n');
+    // calculate coefficients
+    u = crossprod(Q, ymat);
+    VECP beta = backsolve_upperright(R, u);
+    printf("beta:\n"); print_matrix(beta); putchar('\n');
+}
+
+
+int main4() {
+    init_memstack();
+    // test matrix
+    VECP m1 = alloc_matrix(3, 3);
+    set_fill_dbl(m1, 2);
+    print_matrix(m1);
+    VECP m0 = reciprocal(m1);
+    print_matrix(m0);
+    putchar('\n');
+
+    printf("memstack.len: %zu\n", memstack.len);
     for (size_t i = 0; i < m1.nrows; ++i) {
         VECP row = alloc_vector(m1.ncols, DOUBLES_VEC);
-        fill_dbl(row, i * 3);
-        VECP row2 = mulvec(addveci(row, row), row);
-        SET_MATRIX_ROW(m1, i, DOUBLE(row2));
-        free_vector(row);
-        free_vector(row2);
+        VECP row2 = alloc_vector(1, DOUBLES_VEC); set_fill_dbl(row2, i * 3);
+        set_fill_dbl(row, i * 3);
+        set_mul(set_add(row, row), row2);
+        SET_MATRIX_ROW(m1, i, DOUBLE(row));
+        free_vector(&row);
+        free_vector(&row2);
+        free_vector(&row2); // no effect
         printf("memstack.len: %zu\n", memstack.len);
         // for (size_t j = 0; j < m1.ncols; ++j) {
         //     SET_MATRIX_ELT(m1, i, j, i * m1.ncols + j);
@@ -594,12 +928,13 @@ int main() {
     print_matrix(m1);
     putchar('\n');
 
-    MATP m2 = transpose(m1);
+    VECP m2 = transp(m1);
     print_matrix(m2);
     putchar('\n');
 
-    MATP m3 = matmul(m2, m1);
+    VECP m3 = matmul(m2, m1);
     print_matrix(m3);
+    return 0;
 }
 
 

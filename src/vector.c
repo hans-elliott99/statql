@@ -82,12 +82,16 @@ VECP alloc_vector(size_t n, vectype_t type) {
     v.node = chk_malloc(sizeof(struct DLNode));
     v.node->vec = chk_malloc(sizeof(VectorStruct));
     alloc_vector_struct(v.node->vec, n, type);
+    v.nrows = 0;
+    v.ncols = 0;
     dllist_append(&memstack, v.node);
     return v;
 }
 
-void free_vector(VECP v) {
-    dllist_remove(&memstack, v.node);
+void free_vector(VECP *v) {
+    if (v->node != NULL)
+        dllist_remove(&memstack, v->node);
+    v->node = NULL;
 }
 
 size_t LENGTH(VECP v) {
@@ -97,7 +101,6 @@ size_t LENGTH(VECP v) {
 size_t CAPACITY(VECP v) {
     return v.node->vec->capacity;
 }
-
 
 vectype_t TYPEOF(VECP v) {
     return v.node->vec->type;

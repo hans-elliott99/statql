@@ -31,10 +31,12 @@ void free_vector_struct(VectorStruct *vs);
 
 typedef struct VECP {
     struct DLNode *node;
+    size_t nrows;
+    size_t ncols;
 } VECP;
 
 VECP alloc_vector(size_t n, vectype_t type);
-void free_vector(VECP v);
+void free_vector(VECP *v);
 
 int *INTEGER(VECP v);
 void set_ints_elt(VECP v, size_t idx, int val);
