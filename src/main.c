@@ -1,320 +1,16 @@
-
 #include <stdio.h>
-
 #include <stdlib.h> // calloc
 #include <string.h> // strcmp
 #include <stdarg.h> // va_list, va_start, va_end
-
 #include "sqlite/sqlite3.h"
 
-int mem = 0;
+#include "global.h"
+#include "vector.h"
+#include "list.h"
+#include "memory.h"
+
 /////////////////////////////////////////
-
-void *chk_malloc(size_t memsize) {
-    void *p;
-    if (memsize == 0)
-        return NULL;
-    p = malloc(memsize);
-    if (!p) {
-        fprintf(stderr, "chk_malloc: memory allocation failed!\n");
-        exit(1);
-    }
-    mem++;
-    return p;
-}
-void *chk_calloc(size_t num, size_t elem_size) {
-    void *p;
-    if (num == 0)
-        return NULL;
-    p = calloc(num, elem_size);
-    if (!p) {
-        fprintf(stderr, "chk_calloc: memory allocation failed!\n");
-        exit(1);
-    }
-    mem++;
-    return p;
-}
-void chk_free(void *p) {
-    if (p) {
-        free(p);
-        mem--;
-    }
-}
-
-
-typedef enum {
-    INTS_VEC = 0,
-    DOUBLES_VEC,
-    STRINGS_VEC,
-    NULL_VEC
-} vectype_t;
-
-const char *vectype_str(vectype_t t) {
-    switch (t) {
-        case INTS_VEC:
-            return "INTS_VEC";
-        case DOUBLES_VEC:
-            return "DOUBLES_VEC";
-        case STRINGS_VEC:
-            return "STRINGS_VEC";
-        case NULL_VEC:
-            return "NULL_VEC";
-        default:
-            return "UNKOWN";
-    }
-}
-
-
-typedef struct VectorStruct {
-    vectype_t type;         // type of data contained by vector
-    void *data;             // pointer to the memory allocated for the vector
-    int *ints;              // pointer to data, if type is INTS_VEC
-    double *doubles;        // pointer to data, if type is DOUBLES_VEC
-    char **strings;         // pointer to data, if type is STRINGS_VEC
-    size_t capacity;        // vector capacity / length
-    size_t n;               // number of allocated elements (differs from capacity only for STRINGS_VEC)
-} VectorStruct;
-
-/*Doubly Linked List*/
-struct DLNode {
-    VectorStruct *vec;
-    struct DLNode *next;
-    struct DLNode *prev;
-};
-
-struct DLList {
-    struct DLNode *head;
-    struct DLNode *tail;
-    size_t len;
-};
-
-
-void alloc_vector_struct(VectorStruct *v, size_t nelem, vectype_t type) {
-    v->type = type;
-    v->capacity = nelem;
-    v->n = (type == STRINGS_VEC) ? 0 : nelem; // inidiv strings need allocation
-    v->data = NULL;
-    v->ints = NULL;
-    v->doubles = NULL;
-    v->strings = NULL;
-    switch (type) {
-        case INTS_VEC:
-            v->data = chk_calloc(nelem, sizeof(int));
-            v->ints = (int*)v->data;
-            break;
-        case DOUBLES_VEC:
-            v->data = chk_calloc(nelem, sizeof(double));
-            v->doubles = (double*)v->data;
-            break;
-        case STRINGS_VEC:
-            v->data = chk_calloc(nelem, sizeof(char*));
-            v->strings = (char**)v->data;
-        case NULL_VEC:
-            break;
-        default:
-            fprintf(stderr, "alloc_vector_struct: unknown type: %d\n", type);
-            exit(1);
-    }
-}
-
-void free_vector_struct(VectorStruct *v) {
-    if (v->type == STRINGS_VEC) {
-        for (size_t i = 0; i < v->n; i++) {
-            chk_free(v->strings[i]);
-        }
-    }
-    chk_free(v->data);
-    v->data = NULL;
-    v->ints = NULL;
-    v->doubles = NULL;
-    v->strings = NULL;
-    v->n = 0;
-    v->capacity = 0;
-}
-
-
-void dllist_append(struct DLList *list, struct DLNode *newnode) {
-    if (list->len == 0) {
-        // first node
-        list->head = newnode;
-        list->tail = newnode;
-        newnode->prev = NULL;
-        newnode->next = NULL;
-    } else {
-        if (list->tail->next != NULL) {
-            fprintf(stderr, "dllist_append: tail->next not NULL\n");
-            exit(1);
-        }
-        list->tail->next = newnode;
-        newnode->prev = list->tail;
-        list->tail = newnode;
-    }
-    list->len++;
-}
-
-void dllist_remove(struct DLList *list, struct DLNode *node) {
-    if (node->prev == NULL) { // if node is head
-        list->head = node->next;
-    } else {
-        node->prev->next = node->next;
-    }
-    if (node->next == NULL) { // if node is tail
-        list->tail = node->prev;
-    } else {
-        node->next->prev = node->prev;
-    }
-    free_vector_struct(node->vec);
-    chk_free(node->vec);
-    chk_free(node);
-    list->len--;
-}
-
-void dllist_pop(struct DLList *list) {
-    if (list->len == 0) {
-        return;
-    }
-    struct DLNode *last = list->tail;
-    if (list->len == 1) {
-        list->head = NULL;
-        list->tail = NULL;
-    } else {
-        list->tail = last->prev;
-        list->tail->next = NULL;
-    }
-    free_vector_struct(last->vec);
-    chk_free(last->vec);
-    chk_free(last);
-    list->len--;
-}
-
-
-
-struct DLList memstack = {NULL, NULL, 0};
-
-typedef struct VECP {
-    struct DLNode *node;
-    vectype_t type;
-    size_t *n;
-    size_t *capacity;
-} VECP;
-
-VECP alloc_vector(size_t n, vectype_t type) {
-    VECP v;
-    v.type = type;
-    v.node = chk_malloc(sizeof(struct DLNode));
-    v.node->vec = chk_malloc(sizeof(VectorStruct));
-    alloc_vector_struct(v.node->vec, n, type);
-    dllist_append(&memstack, v.node);
-    v.n = &v.node->vec->n;
-    v.capacity = &v.node->vec->capacity;
-    return v;
-}
-
-void print_vec_elt(VECP v, size_t idx) {
-    switch (v.type) {
-    case INTS_VEC:
-        printf("%d", v.node->vec->ints[idx]);
-        break;
-    case DOUBLES_VEC:
-        printf("%f", v.node->vec->doubles[idx]);
-        break;
-    case STRINGS_VEC:
-        printf("%s", v.node->vec->strings[idx]);
-        break;
-    default:
-        break;
-    }
-}
-
-int as_int(VECP v, size_t idx) {
-    if (idx >= *v.n) {
-        fprintf(stderr, "as_int: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    if (v.type == STRINGS_VEC) {
-        fprintf(stderr, "as_int: not implemented for STRINGS_VEC");
-        exit(1);
-    }
-    // if double, casted to integer
-    return ((int *)v.node->vec->data)[idx];
-}
-
-void set_ints_elt(VECP v, size_t idx, int val) {
-    if (v.type != INTS_VEC) {
-        fprintf(stderr, "set_int: val is of type %s, expected INTS_VEC\n",
-                vectype_str(v.type));
-        exit(1);
-    }
-    if (idx >= *v.n) {
-        fprintf(stderr, "set_int: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    v.node->vec->ints[idx] = val;
-}
-
-double as_double(VECP v, size_t idx) {
-    if (idx >= *v.n) {
-        fprintf(stderr, "as_double: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    if (v.node->vec->type == STRINGS_VEC) {
-        fprintf(stderr, "as_double: not implemented for STRINGS_VEC");
-        exit(1);
-    }
-    // if int, casted to double
-    return ((double *)v.node->vec->data)[idx];
-}
-
-void set_doubles_elt(VECP v, size_t idx, double val) {
-    if (v.type != DOUBLES_VEC) {
-        fprintf(stderr, "set_double: val is of type %s, expected DOUBLES_VEC\n",
-                vectype_str(v.type));
-        exit(1);
-    }
-    if (idx >= *v.n) {
-        fprintf(stderr, "set_double: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    v.node->vec->doubles[idx] = val;
-}
-
-const char *as_string(VECP v, size_t idx) {
-    if (idx >= *v.n) {
-        fprintf(stderr, "as_string: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    if (v.type != STRINGS_VEC) {
-        fprintf(stderr, "as_string: not implemented for non-STRINGS_VEC");
-        exit(1);
-    }
-    return ((char **)v.node->vec->data)[idx];
-}
-
-void set_strings_elt(VECP v, size_t idx, const char *val) {
-    if (v.type != STRINGS_VEC) {
-        fprintf(stderr, "set_strings_elt: val is of type %s, expected STRINGS_VEC\n",
-                vectype_str(v.type));
-        exit(1);
-    }
-    if (idx >= *v.capacity) {
-        fprintf(stderr, "set_strings_elt: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    v.node->vec->strings[idx] = strdup(val); mem++;
-    v.node->vec->n++;
-}
-
-
-// atexit free all consumed memory
-void free_memstack(void) {
-    for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
-        dllist_remove(&memstack, n);
-    }
-    printf("  Final memstack len: %zu\n", memstack.len);
-    printf("  Memory leaks: %d\n", mem);
-}
-
-int main() {
+int main2() {
     if (atexit(free_memstack)) {
         fprintf(stderr, "Failed to register 'free_memstack'\n");
         return 1;
@@ -325,25 +21,29 @@ int main() {
     printf("v1: %d\n", as_int(v1, 0));
 
     VECP v2 = alloc_vector(10, DOUBLES_VEC);
-    set_doubles_elt(v2, 0, 43.33);
+    set_doubles_elt(v2, 0, 33.33);
+    DOUBLE(v2)[1] = 44.44;
     printf("v2: %f\n", as_double(v2, 0));
+    for (size_t i = 0; i < LENGTH(v2); i++) {
+        printf("v2[%zu]: %f\n", i, DOUBLE(v2)[i]);
+    }
 
     VECP v3 = alloc_vector(1, STRINGS_VEC);
     set_strings_elt(v3, 0, "hello");
     printf("v3: %s\n", as_string(v3, 0));
+    printf("v3: %s\n", STRING_ELT(v3, 0));
 
     printf("initial len: %zu\n", memstack.len);
     for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
-        switch (n->vec->type)
-        {
+        switch (n->vec->type) {
         case INTS_VEC:
-            printf("data: %d\n", n->vec->ints[0]);
+            printf(" * data[0]: %d\n", n->vec->ints[0]);
             break;
         case DOUBLES_VEC:
-            printf("data: %f\n", n->vec->doubles[0]);
+            printf(" * data[0]: %f\n", n->vec->doubles[0]);
             break;
         case STRINGS_VEC:
-            printf("data: %s\n", n->vec->strings[0]);
+            printf(" * data[0]: %s\n", n->vec->strings[0]);
             break;
         default:
             break;
@@ -352,33 +52,20 @@ int main() {
 
     dllist_remove(&memstack, v2.node);
     printf("len: %zu\n", memstack.len);
-    // for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
-    //     printf("data: %d\n", n->data->ints[0]);
-    // }
 
+    free_vector(v3);
+    printf("len: %zu\n", memstack.len);
     return 0;
 }
 
 
 
 
-
-void *chk_realloc(void *ptr, size_t new_size) {
-    void *p;
-    if (new_size == 0) {
-        free(ptr);
-        return NULL;
-    }
-    if (ptr)
-        p = realloc(ptr, new_size);
-    if (!p) {
-        fprintf(stderr, "chk_realloc: memory reallocation failed!\n");
-        exit(1);
-    }
-    return p;
-}
-
-
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*query_buff must be freed*/
 void build_sql_query(char **query_buff, const char *format_string, ...) {
@@ -387,7 +74,7 @@ void build_sql_query(char **query_buff, const char *format_string, ...) {
     // determine length needed for query
     int req_len = snprintf(NULL, 0, format_string, argptr); 
     // allocate memory for query and write it
-    *query_buff = chk_calloc(req_len + 1, sizeof(char));
+    *query_buff = chk_malloc((req_len + 1) * sizeof(char));
     vsnprintf(*query_buff, req_len + 1, format_string, argptr);
     va_end(argptr);
 }
@@ -408,123 +95,8 @@ void exec_sqlite_query(sqlite3 *db,
 }
 
 
-/*
-    VECTORS
-*/
-
-
-vectype_t chk_vectype(int t) {
-    if (t != INTS_VEC && t != DOUBLES_VEC && t != STRINGS_VEC && t != NULL_VEC) {
-        fprintf(stderr, "chk_vectype: invalid vectype: %d\n", t);
-        exit(1);
-    }
-    return t;
-}
-
-
-typedef struct VECSTRUCT {
-    vectype_t type;
-    void *data;
-    int *ints;
-    double *doubles;
-    size_t n;
-} VECSTRUCT;
-
-
-VECSTRUCT alloc_vector_old(size_t n, vectype_t type) {
-    VECSTRUCT v;
-    v.type = type;
-    v.n = n;
-    v.data = NULL;
-    v.ints = NULL;
-    v.doubles = NULL;
-    switch (type) {
-        case INTS_VEC:
-            v.data = chk_calloc(n, sizeof(int));
-            v.ints = (int*)v.data;
-            break;
-        case DOUBLES_VEC:
-            v.data = chk_calloc(n, sizeof(double));
-            v.doubles = (double*)v.data;
-            break;
-        case STRINGS_VEC:
-            fprintf(stderr, "alloc_vector_old: strings not implemented, use alloc_strings\n");
-            exit(1);
-        case NULL_VEC:
-            break;
-        default:
-            fprintf(stderr, "alloc_vector_old: unknown type: %d\n", type);
-            exit(1);
-    }
-    return v;
-}
-
-void free_vector(VECSTRUCT *v) {
-    free(v->data);
-    v->data = NULL;
-    v->ints = NULL;
-    v->doubles = NULL;
-    v->n = 0;
-}
-
-
-void set_vector_elt(VECSTRUCT *v, size_t idx, void *val) {
-    if (idx >= v->n) {
-        fprintf(stderr, "set_vector_elt: index out of bounds: %zu\n", idx);
-        exit(1);
-    }
-    switch (v->type) {
-    case INTS_VEC:
-        v->ints[idx] = *(int*)val;
-        break;
-    case DOUBLES_VEC:
-        v->doubles[idx] = *(double*)val;
-        break;
-    case STRINGS_VEC:
-        fprintf(stderr, "set_vector_elt: strings not implemented, use set_strings_elt_old\n");
-        exit(1);
-    default:
-        break;
-    }
-}
-
-
-typedef struct STRSTRUCT {
-    char **strings;
-    size_t n;
-    size_t capacity;
-} STRSTRUCT;
-
-STRSTRUCT alloc_strings(size_t capacity) {
-    STRSTRUCT s;
-    s.strings = chk_calloc(capacity, sizeof(char*));
-    s.capacity = capacity;
-    return s;
-}
-
-void set_strings_elt_old(STRSTRUCT *s, size_t i, const char *str) {
-    if (i >= s->capacity) {
-        fprintf(stderr, "set_strings_elt_old: index out of bounds: %zu\n", i);
-        exit(1);
-    }
-    s->strings[i] = strdup(str);
-    s->n++;
-}
-
-void free_strings(STRSTRUCT *s) {
-    for (size_t i = 0; i < s->n; i++) {
-        free(s->strings[i]);
-    }
-    free(s->strings);
-    s->strings = NULL;
-    s->capacity = 0;
-    s->n = 0;
-}
-
-
 int print_callback(void *print_header, int argc, char **data, char **columns) {
     int *ph = (int*)print_header;
-
     if (*ph) {
         for (int i = 0; i < argc; i++) {
             printf("%s\t", columns[i]);
@@ -547,13 +119,12 @@ void print_head(sqlite3 *db, size_t nrows) {
     // build query
     char *query;
     build_sql_query(&query, "SELECT * FROM birthwt LIMIT %zu", nrows);
-
     int print_header = 1;
     exec_sqlite_query(db,
                       query,
                       print_callback,
                       &print_header);
-    free(query);
+    chk_free(query);
 }
 
 
@@ -595,8 +166,7 @@ int col_type_callback(void *coltypes, int argc, char **data, char **columns) {
     } else if (strcmp(data[2], "TEXT") == 0) {
         ctypes[col_ix] = STRINGS_VEC;
     } else if (strcmp(data[2], "BLOB") == 0) {
-        ctypes[col_ix] = NULL_VEC;
-        printf("BLOB - not implemented\n");
+        ctypes[col_ix] = STRINGS_VEC;
     } else {
         // TODO
         ctypes[col_ix] = NULL_VEC;
@@ -606,29 +176,27 @@ int col_type_callback(void *coltypes, int argc, char **data, char **columns) {
 }
 
 
-void db_coltypes(sqlite3 *db, size_t ncols, VECSTRUCT *v) {
+VECP db_coltypes(sqlite3 *db, size_t ncols) {
+    VECP v = alloc_vector(ncols, INTS_VEC);
     const char *query = "PRAGMA table_info(birthwt)";
-    exec_sqlite_query(db, query, col_type_callback, v->ints);
+    exec_sqlite_query(db, query, col_type_callback, INTEGER(v));
+    return v;
 }
 
 
-int colnames_callback(void *strings, int argc, char **data, char **columns) {
-    char **cols = *(char ***)strings;
+int colnames_callback(void *vec, int argc, char **data, char **columns) {
+    VECP *v = (VECP*)vec;
     for (int i = 0; i < argc; i++) {
-        cols[i] = strdup(columns[i]);
+        set_strings_elt(*v, i, columns[i]);
     }
     return 0;
 }
 
-void db_colnames(sqlite3 *db, STRSTRUCT *s) {
-    size_t ncols = db_ncols(db);
-    if (s->capacity != ncols) {
-        fprintf(stderr, "db_colnames: length mismatch\n");
-        exit(1);
-    }
+VECP db_colnames(sqlite3 *db, size_t ncols) {
+    VECP v = alloc_vector(ncols, STRINGS_VEC);
     const char *query = "SELECT * FROM birthwt LIMIT 1";
-    exec_sqlite_query(db, query, colnames_callback, &s->strings);
-    s->n = ncols;
+    exec_sqlite_query(db, query, colnames_callback, &v);
+    return v;
 }
 
 
@@ -637,20 +205,20 @@ typedef struct sqlite_table {
     char *dbpath;
     size_t nrows;
     size_t ncols;
-    STRSTRUCT colnames;
-    VECSTRUCT coltypes;
+    VECP colnames;
+    VECP coltypes;
     sqlite3 *db;
     int ini;
 } sqlite_table;
 
 
-sqlite_table currtab = {
+sqlite_table tab = {
     NULL,
     NULL,
     0,
     0,
-    {NULL, 0, 0},
-    {NULL_VEC, NULL, NULL, NULL, 0},
+    {0},
+    {0},
     NULL,
     0
 };
@@ -661,75 +229,409 @@ void free_sqlite_table(void);
 void init_sqlite_table(const char *dbpath,
                        const char *table) {
     
-    if (currtab.ini) {
+    if (tab.ini) {
         fprintf(stderr, "Warning: init_sqlite_table: already initialized, freeing...\n");
         free_sqlite_table();
     }
     printf("Connecting to %s for table '%s'...\n\n", dbpath, table);
-    int rc = sqlite3_open(dbpath, &currtab.db);
+    int rc = sqlite3_open(dbpath, &tab.db);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(currtab.db));
+        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(tab.db));
         exit(1);
     }
-    currtab.nrows = db_nrows(currtab.db);
-    currtab.ncols = db_ncols(currtab.db);
-    currtab.colnames = alloc_strings(currtab.ncols);
-    db_colnames(currtab.db, &currtab.colnames);
-    currtab.coltypes = alloc_vector_old(currtab.ncols, INTS_VEC);
-    db_coltypes(currtab.db, currtab.ncols, &currtab.coltypes);
-    currtab.name = strdup(table);
-    currtab.dbpath = strdup(dbpath);
-    currtab.ini = 1;
+    tab.nrows = db_nrows(tab.db);
+    tab.ncols = db_ncols(tab.db);
+    tab.colnames = db_colnames(tab.db, tab.ncols);
+    tab.coltypes = db_coltypes(tab.db, tab.ncols);
+    chk_strcpy(&tab.name, table);
+    chk_strcpy(&tab.dbpath, dbpath);
+    tab.ini = 1;
 }
 
 
 void free_sqlite_table(void) {
-    free_strings(&currtab.colnames);
-    free_vector(&currtab.coltypes);
-    free(currtab.name);
-    free(currtab.dbpath);
+    printf("\nFreeing sqlite_table...\n");
+    free_vector(tab.colnames);
+    free_vector(tab.coltypes);
+    chk_free(tab.name);
+    chk_free(tab.dbpath);
     printf("\nClosing database connection...\n");
-    if (currtab.db) {
-        int rc = sqlite3_close(currtab.db);
+    if (tab.db) {
+        int rc = sqlite3_close(tab.db);
         if (rc != SQLITE_OK) {
-            // TODO
-            fprintf(stderr, ":( Failed to close database: %s\n", sqlite3_errmsg(currtab.db));
+            // TODO ?
+            fprintf(stderr, ":( Failed to close database: %s\n", sqlite3_errmsg(tab.db));
         }
-        currtab.db = NULL;
+        tab.db = NULL;
     } else{
         printf("Nothing to do :O\n");
     }
-    currtab.ini = 0;
+    tab.ini = 0;
+}
+
+
+size_t which_str(VECP v, const char *str) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        if (strcmp(STRING_ELT(v, i), str) == 0) {
+            return i;
+        }
+    }
+    return LENGTH(v);
+}
+
+void fill_dbl(VECP v, double val) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v, i, val);
+    }
+}
+
+void fill_int(VECP v, int val) {
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v, i, val);
+    }
+}
+
+
+VECP addvec(VECP v1, VECP v2) {
+    size_t n1 = LENGTH(v1);
+    size_t n2 = LENGTH(v2);
+    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
+        fprintf(stderr, "addvec: not implemented for STRINGS_VEC\n");
+        exit(1);
+    }
+    if (n1 != n2 && n1 != 1 && n2 != 1) {
+        fprintf(stderr, "addvec: lengths are not compatible\n");
+        exit(1);
+    }
+    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    if (n1 > n2) {
+        // n2 is the scalar
+        for (size_t i = 0; i < n1; ++i) {
+            // as_double casts integer vector data to double
+            DOUBLE(v3)[i] = as_double(v1, i) + as_double(v2, 0);
+        }
+    } else if (n2 > n1) {
+        // n1 is the scalar
+        for (size_t i = 0; i < n2; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, 0) + as_double(v2, i);
+        }
+    } else {
+        // both vectors, equal length
+        for (size_t i = 0; i < n1; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, i) + as_double(v2, i);
+        }
+    }
+    return v3;
+}
+
+
+/*add v2 to v1, in place*/
+VECP addveci(VECP v1, VECP v2) {
+    size_t n1 = LENGTH(v1);
+    size_t n2 = LENGTH(v2);
+    if (TYPEOF(v1) == INTS_VEC) {
+        CAST_DOUBLE(v1);
+    }
+    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
+        fprintf(stderr, "addvec: not implemented for STRINGS_VEC\n");
+        exit(1);
+    }
+    if (n1 != n2 && n2 != 1) {
+        fprintf(stderr, "addvec: lengths are not compatible\n");
+        exit(1);
+    }
+    if (n1 > n2) {
+        // n2 is the scalar
+        for (size_t i = 0; i < n1; ++i) {
+            // as_double casts integer vector data to double
+            DOUBLE(v1)[i] = as_double(v1, i) + as_double(v2, 0);
+        }
+    } else {
+        // both vectors, equal length
+        for (size_t i = 0; i < n1; ++i) {
+            DOUBLE(v1)[i] = as_double(v1, i) + as_double(v2, i);
+        }
+    }
+    return v1;
+}
+
+
+VECP mulvec(VECP v1, VECP v2) {
+    size_t n1 = LENGTH(v1);
+    size_t n2 = LENGTH(v2);
+    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
+        fprintf(stderr, "mulvec: not implemented for STRINGS_VEC\n");
+        exit(1);
+    }
+    if (n1 != n2 && n1 != 1 && n2 != 1) {
+        fprintf(stderr, "mulvec: lengths are not compatible\n");
+        exit(1);
+    }
+    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    if (n1 > n2) {
+        // n2 is the scalar
+        for (size_t i = 0; i < n1; ++i) {
+            // as_double casts integer vector data to double
+            DOUBLE(v3)[i] = as_double(v1, i) * as_double(v2, 0);
+        }
+    } else if (n2 > n1) {
+        // n1 is the scalar
+        for (size_t i = 0; i < n2; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, 0) * as_double(v2, i);
+        }
+    } else {
+        // both vectors, equal length
+        for (size_t i = 0; i < n1; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, i) * as_double(v2, i);
+        }
+    }
+    return v3;
+}
+
+VECP divvec(VECP v1, VECP v2) {
+    size_t n1 = LENGTH(v1);
+    size_t n2 = LENGTH(v2);
+    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
+        fprintf(stderr, "divvec: not implemented for STRINGS_VEC\n");
+        exit(1);
+    }
+    if (n1 != n2 && n1 != 1 && n2 != 1) {
+        fprintf(stderr, "divvec: lengths are not compatible\n");
+        exit(1);
+    }
+    VECP v3 = alloc_vector(n1 > n2 ? n1 : n2, DOUBLES_VEC);
+    if (n1 > n2) {
+        // n2 is the scalar
+        for (size_t i = 0; i < n1; ++i) {
+            // as_double casts integer vector data to double
+            DOUBLE(v3)[i] = as_double(v1, i) / as_double(v2, 0);
+        }
+    } else if (n2 > n1) {
+        // n1 is the scalar
+        for (size_t i = 0; i < n2; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, 0) / as_double(v2, i);
+        }
+    } else {
+        // both vectors, equal length
+        for (size_t i = 0; i < n1; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, i) / as_double(v2, i);
+        }
+    }
+    return v3;
+}
+
+VECP add_dbl(VECP v, double scalar) {
+    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) + scalar);
+    }
+    return v2;
+}
+
+VECP mul_dbl(VECP v, double scalar) {
+    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, as_double(v, i) * scalar);
+    }
+    return v2;
+}
+
+VECP add_int(VECP v, int scalar) {
+    VECP v2 = alloc_vector(LENGTH(v), INTS_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v2, i, as_int(v, i) + scalar);
+    }
+    return v2;
+}
+
+VECP mul_int(VECP v, int scalar) {
+    VECP v2 = alloc_vector(LENGTH(v), INTS_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_ints_elt(v2, i, as_int(v, i) * scalar);
+    }
+    return v2;
+}
+
+VECP reciprocal(VECP v) {
+    VECP v2 = alloc_vector(LENGTH(v), DOUBLES_VEC);
+    for (size_t i = 0; i < LENGTH(v); ++i) {
+        set_doubles_elt(v2, i, 1.0 / as_double(v, i));
+    }
+    return v2;
+}
+
+
+typedef struct MATP {
+    struct DLNode *node;
+    size_t nrows;
+    size_t ncols;
+} MATP;
+
+MATP alloc_matrix(size_t nrows, size_t ncols) {
+    MATP m;
+    m.node = chk_malloc(sizeof(struct DLNode));
+    m.node->vec = chk_malloc(sizeof(VectorStruct));
+    alloc_vector_struct(m.node->vec, nrows * ncols, DOUBLES_VEC);
+    m.nrows = nrows;
+    m.ncols = ncols;
+    dllist_append(&memstack, m.node);
+    return m;
+}
+
+MATP free_matrix(MATP m) {
+    dllist_remove(&memstack, m.node);
+    return m;
+}
+
+double MATRIX_ELT(MATP m, size_t i, size_t j) {
+    return m.node->vec->doubles[i * m.ncols + j];
+}
+
+void SET_MATRIX_ELT(MATP m, size_t i, size_t j, double val) {
+    m.node->vec->doubles[i * m.ncols + j] = val;
+}
+
+VECP MATRIX_ROW(MATP m, size_t i) {
+    VECP row = alloc_vector(m.ncols, DOUBLES_VEC);
+    size_t rowstart = i * m.ncols;
+    for (size_t j = 0; j < m.ncols; ++j) {
+        set_doubles_elt(row, j, m.node->vec->doubles[rowstart + j]);
+    }
+    return row;
+}
+
+double *MATRIX_ROW_PTR(MATP m, size_t i) {
+    return m.node->vec->doubles + i * m.ncols;
+}
+
+void SET_MATRIX_ROW(MATP m, size_t i, double *row) {
+    size_t rowstart = i * m.ncols;
+    for (size_t j = 0; j < m.ncols; ++j) {
+        m.node->vec->doubles[rowstart + j] = row[j];
+    }
+}
+
+VECP MATRIX_COL(MATP m, size_t j) {
+    VECP col = alloc_vector(m.nrows, DOUBLES_VEC);
+    for (size_t i = 0; i < m.nrows; ++i) {
+        set_doubles_elt(col, i, MATRIX_ELT(m, i, j));
+    }
+    return col;
+}
+
+void SET_MATRIX_COL(MATP m, size_t j, double *col) {
+    for (size_t i = 0; i < m.nrows; ++i) {
+        SET_MATRIX_ELT(m, i, j, col[i]);
+    }
 }
 
 
 
-int main2() {
+void fill_matrix(MATP m, double val) {
+    for (size_t i = 0; i < m.nrows; ++i) {
+        for (size_t j = 0; j < m.ncols; ++j) {
+            SET_MATRIX_ELT(m, i, j, val);
+        }
+    }
+}
+
+
+MATP matmul(MATP m1, MATP m2) {
+    if (m1.ncols != m2.nrows) {
+        fprintf(stderr, "matmul: m1.ncols != m2.nrows\n");
+        exit(1);
+    }
+    MATP m3 = alloc_matrix(m1.nrows, m2.ncols);
+    for (size_t i = 0; i < m1.nrows; ++i) {
+        for (size_t j = 0; j < m2.ncols; ++j) {
+            double sum = 0;
+            for (size_t k = 0; k < m1.ncols; ++k) {
+                sum += MATRIX_ELT(m1, i, k) * MATRIX_ELT(m2, k, j);
+            }
+            SET_MATRIX_ELT(m3, i, j, sum);
+        }
+    }
+    return m3;
+}
+
+MATP transpose(MATP m) {
+    MATP mt = alloc_matrix(m.ncols, m.nrows);
+    for (size_t i = 0; i < m.nrows; ++i) {
+        for (size_t j = 0; j < m.ncols; ++j) {
+            SET_MATRIX_ELT(mt, j, i, MATRIX_ELT(m, i, j));
+        }
+    }
+    return mt;
+}
+
+
+void print_matrix(MATP m) {
+    for (size_t i = 0; i < m.nrows; ++i) {
+        for (size_t j = 0; j < m.ncols; ++j) {
+            printf("%f\t", MATRIX_ELT(m, i, j));
+        }
+        putchar('\n');
+    }
+}
+
+int main() {
+    init_memstack();
+    // test matrix
+    printf("memstack.len: %zu\n", memstack.len);
+    MATP m1 = alloc_matrix(3, 3);
+    for (size_t i = 0; i < m1.nrows; ++i) {
+        VECP row = alloc_vector(m1.ncols, DOUBLES_VEC);
+        fill_dbl(row, i * 3);
+        VECP row2 = mulvec(addveci(row, row), row);
+        SET_MATRIX_ROW(m1, i, DOUBLE(row2));
+        free_vector(row);
+        free_vector(row2);
+        printf("memstack.len: %zu\n", memstack.len);
+        // for (size_t j = 0; j < m1.ncols; ++j) {
+        //     SET_MATRIX_ELT(m1, i, j, i * m1.ncols + j);
+        // }
+    }
+    print_matrix(m1);
+    putchar('\n');
+
+    MATP m2 = transpose(m1);
+    print_matrix(m2);
+    putchar('\n');
+
+    MATP m3 = matmul(m2, m1);
+    print_matrix(m3);
+}
+
+
+
+int main3() {
     /*
             SETUP
     */
+    if (atexit(free_memstack)) {
+        fprintf(stderr, "Failed to register 'free_memstack'\n");
+        return 1;
+    }
     if (atexit(free_sqlite_table)) {
         fprintf(stderr, "Failed to register 'free_sqlite_table'\n");
         return 1;
     }
+
     init_sqlite_table("test.db", "birthwt");
     /*
             QUERY TABLE INFO
     */
-    print_head(currtab.db, 10);
-    printf("nrows: %zu\n", currtab.nrows);
-    printf("ncols: %zu\n", currtab.ncols);
+    print_head(tab.db, 10);
+    printf("nrows: %zu\n", tab.nrows);
+    printf("ncols: %zu\n", tab.ncols);
     /*
             READ DATA INTO VECTORS...
     */
-    // vectype_t t;
-    // for (size_t i = 0; i < ncols; i++) {
-    //     t = chk_vectype(coltypes.ints[i]);
-    // }
-    for (size_t i = 0; i < currtab.ncols; i++) {
+    for (size_t i = 0; i < tab.ncols; i++) {
         printf("%s (%s) \n",
-               currtab.colnames.strings[i],
-               vectype_str(currtab.coltypes.ints[i]));
+               STRING_ELT(tab.colnames, i),
+               vectype_str(as_int(tab.coltypes, i))
+               );
     }
     return 0;
 }
