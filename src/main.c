@@ -811,13 +811,13 @@ void print_matrix(const VECP m) {
 }
 
 
-VECP backsolve_upperright(const VECP R, const VECP y) {
-    size_t m = ncol(R);
-    VECP beta = alloc_vector(m, DOUBLES_VEC);
+VECP backsub_uppertri(const VECP R, const VECP y) {
+    size_t p = ncol(R);
+    VECP beta = alloc_vector(p, DOUBLES_VEC);
     double summ;
-    for (size_t j = m; j > 0; --j) {
+    for (size_t j = p; j > 0; --j) {
         summ = as_double(y, j - 1);
-        for (size_t i = j; i < m; ++i) {
+        for (size_t i = j; i < p; ++i) {
             summ -= MATRIX_ELT(R, j - 1, i) * as_double(beta, i);
         }
         DOUBLE(beta)[j - 1] = summ / MATRIX_ELT(R, j - 1, j - 1);
@@ -826,28 +826,93 @@ VECP backsolve_upperright(const VECP R, const VECP y) {
 }
 
 /*
-    qr decomposition for least squares estimates
-    TODO: allow for Weight matrix
-    TODO: check for rank deficiency
-    TODO: matrix inversion to calculate SEs... (R^t R)^-1
+    Invert an upper right triangular matrix using back substitution.
+    Doesn't check for upper triangularity.
+    Example:
+     Compute $(X^\top X)^{-1}$ after QR decomposition because $R$ is equivalent
+     to $L^\top L$ where $L$ is the lower triangular from Choleski decomposition
+     of X, for which
+     $(X^\top X)^{-1} = (L^{-1})^\top L^{-1} = R^{-1} (R^{-1})^\top$
+*/
+VECP invert_upper_right(const VECP R) {
+    assert_matrix(R);
+    size_t p = ncol(R);
+    /*
+        Create p x p diag matrix of 1s to solve
+          R u = I
+        Minimize allocations by setting Rinv = I to start. 
+    */
+    VECP Rinv = alloc_matrix(p, p);
+    for (size_t i = 0; i < p; ++i) SET_MATRIX_ELT(Rinv, i, i, 1.);
+    /*
+        invert upper right triangular matrix via back substitution
+    */
+    double elt;
+    double *row, *rowprev;
+    size_t i, j, k;
+    for (j = p; j > 0; --j) {
+        /*Rinv[j, ] <- y[j, ]*/
+        for (i = j; i < p; ++i) {
+            /*
+            Rinv[j, ] <- Rinv[j, ] - R[j, i] * Rinv[i, ]
+                avoid extra allocations needed for:
+                  rowprev = MATRIX_ROW(Rinv, i); // row to subtract
+                  row = set_add(row, set_mul_dbl(rowprev, -elt));
+            */
+            row = MATRIX_ROW_PTR(Rinv, j - 1);
+            rowprev = MATRIX_ROW_PTR(Rinv, i);
+            elt = MATRIX_ELT(R, j - 1, i);
+            for (k = 0; k < p; ++k) {
+                row[k] -= elt * rowprev[k];
+            }
+        }
+        /*
+        Rinv[j, ] <- Rinv[j, ] / R[j, j]
+            avoid extra allocations needed for:
+              row = set_div_dbl(row, MATRIX_ELT(R, j - 1, j - 1));
+              SET_MATRIX_ROW(Rinv, j - 1, row);
+              free_vector(&row);
+        */
+        elt = MATRIX_ELT(R, j - 1, j - 1);
+        for (k = 0; k < p; ++k) {
+            MATRIX_ROW_PTR(Rinv, j - 1)[k] /= elt;
+        }
+    }
+    return Rinv;
+}
+
+/*
+    qr decomposition by gram schmidt to obtain least squares estimates
+    TODO: check for singularity?
+
+    TODO: allow for weight matrix for WLS
+      - simple, X becomes W^(1/2) X (McCullagh and Nelder, pg 88)
+      because beta = (X^t W X)^-1 X^t W y, and W is symmetric and positive
+      definite which allows us to write W = W^(1/2) W^(1/2)
+      - so just pre-matmul X by W^(1/2) and y by W^(1/2)
 */
 int main() {
     init_memstack();
-    const double data[12] = {1.,2.,3.,1.,3.,9.,1.,9.,10.,1.,4.,5.};
+    const double data[12] = {1.,2.,3.,
+                             1.,3.,9.,
+                             1.,9.,10.,
+                             1.,4.,5.};
     const VECP X = alloc_matrix(4, 3);
         for (size_t i = 0; i < LENGTH(X); ++i) DOUBLE(X)[i] = data[i]; 
-    printf("X:\n"); print_matrix(X); putchar('\n');
+        printf("X:\n"); print_matrix(X); putchar('\n');
     const VECP y = alloc_vector(4, DOUBLES_VEC); set_fill_dbl(y, 1);
         for (size_t i = 0; i < LENGTH(y); ++i) DOUBLE(y)[i] = i + 1;
-    printf("y:\n"); print_matrix(y); putchar('\n');
+        printf("y:\n"); print_matrix(y); putchar('\n');
 // void qr_decomp(const VECP X, const VECP y, VECP *Qin, VECP *Rin) {
     assert_matrix(X);
     VECP ymat;
+    int free_y = 0;
     if (is_matrix(y)) {
         ymat = y;
     } else {
         ymat = copyvec(y);
         ymat = set_asmatrix(ymat, nrow(X), 1);
+        free_y = 1;
     }
     size_t n = nrow(X);
     size_t p = ncol(X);
@@ -855,7 +920,9 @@ int main() {
     Q = alloc_matrix(n, p);
     VECP R; // = *Rin;
     R = alloc_matrix(p, p);
-
+    /*
+        Gram-Schmidt orthonormalization
+    */
     printf("1: memstack.len: %zu\n", memstack.len);
     VECP v, u, Rij, tmp;
     double val;
@@ -866,7 +933,7 @@ int main() {
         u = copyvec(v);
         if (j > 0) {
             for (size_t i = 0; i < j; ++i) {
-                // calculate R[i, j]
+                // calculate R[i, j] = t(Q[, i]) %*% v
                 Rij = set_matmul(set_asmatrix(MATRIX_COL(Q, i), 1, n), // get transpose of col (1 x n)
                                  v); // 1 x n  X  n x 1
                 val = DOUBLE(Rij)[0];
@@ -890,13 +957,21 @@ int main() {
         free_vector(&v);
         free_vector(&u);
     }
-    printf("memstack.len: %zu\n", memstack.len);
     printf("Q:\n"); print_matrix(Q); putchar('\n');
     printf("R:\n"); print_matrix(R); putchar('\n');
     // calculate coefficients
     u = crossprod(Q, ymat);
-    VECP beta = backsolve_upperright(R, u);
+    VECP beta = backsub_uppertri(R, u);
     printf("beta:\n"); print_matrix(beta); putchar('\n');
+    if (free_y) free_vector(&ymat);
+
+    // calculate (X^t X)^-1
+    printf("Rinv\n");
+    printf("memstack.len: %zu\n", memstack.len);
+    VECP Rinv = invert_upper_right(R);
+    printf("memstack.len: %zu\n", memstack.len);
+    print_matrix(Rinv);
+    return 0;
 }
 
 
