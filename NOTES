@@ -29,3 +29,19 @@ i.e., vectors are special cases of matrices.
 
 TODO:
 https://stackoverflow.com/questions/1923837/how-to-use-nan-and-inf-in-c
+
+
+
+
+2024-04-03:
+- Thinking about how to couple matrices and vectors... where vectors are just special cases of matrices but it can be convenient to treat them separately since they are almost more commonly needed.  
+    - If vectors are just matrices, then we can use "dims" to determine the amount of data in the underlying vector.
+    - If vectors are separated, then we end up having "dims" be unused for vectors and we have to check for this in the code.
+    - Which is more convenient for user? What's the best way to check if a matrix is just a vector...
+        - further, have to specify between row vectors and column vectors, or everything is just a matrix!
+- I definitely see myself refactoring much of the underlying vector/matrix code - all in all, it's quite simple and quick to write/rewrite. It's fun to try different design patterns and see what works best.
+- What I do like and plan to keep is the "global memory stack", as I'm calling it, which is just a global doubly-linked-list where all objects are allocated.
+    - on one hand this is nice since it makes it easy to keep track of allocations, which then also makes it easy to free all memory at the end of the program (although it's not really a good idea to rely on this, it's still nice to have).
+    - more importantly, I like what it enables from a design perspective. all objects live in this global list and users just get pointers to these objects. it abstracts away the memory management a bit, and also makes it easy to pass around objects, allowing the backend to be very intentional about when data is modified in place or copied into a new object.
+        - this idea is obviously inspired by R's SEXP. It's interesting to think about why a garbage collector is needed for R, where a whole prog. lang. is built on top of this idea - if you don't want the user to have to worry about memory management, you don't want the global memory stack to get cluttered up over time... for this program it makes sense to stay "lower level" and manually free intermediate objects when they are no longer needed. R's GC just eliminates the need to think about this... (also I'm sure there are other interesting reasons for the GC, will have to research some day)
+    

@@ -31,6 +31,18 @@ void *chk_calloc(size_t num, size_t elem_size) {
     return p;
 }
 
+void chk_realloc(void **p, size_t memsize) {
+    if (memsize == 0) {
+        chk_free(*p);
+        return;
+    }
+    *p = realloc(*p, memsize);
+    if (!*p) {
+        fprintf(stderr, "chk_realloc: memory allocation failed!\n");
+        exit(1);
+    }
+}
+
 /*pass dest by ref, and make sure to free*/
 void chk_strcpy(char **dest, const char *src) {
     if (src == NULL)

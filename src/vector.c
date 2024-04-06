@@ -7,6 +7,8 @@
 
 #include "global.h"
 
+
+
 /*
     vectype_t - Vector Type
 */
@@ -29,11 +31,12 @@ const char *vectype_str(vectype_t t) {
 /*
     VectorStruct
 */
-
 void alloc_vector_struct(VectorStruct *vs, size_t nelem, vectype_t type) {
     vs->type = type;
     vs->capacity = nelem;
     vs->n = (type == STRINGS_VEC) ? 0 : nelem; // inidiv strings need allocation
+    vs->dims[0] = 1;
+    vs->dims[1] = vs->n; // default to row vector
     vs->data = NULL;
     vs->ints = NULL;
     vs->doubles = NULL;
@@ -60,7 +63,7 @@ void alloc_vector_struct(VectorStruct *vs, size_t nelem, vectype_t type) {
 
 void free_vector_struct(VectorStruct *vs) {
     if (vs->type == STRINGS_VEC) {
-        for (size_t i = 0; i < vs->n; i++) {
+        for (size_t i = 0; i < vs->n; ++i) {
             chk_free(vs->strings[i]);
         }
     }
@@ -69,8 +72,10 @@ void free_vector_struct(VectorStruct *vs) {
     vs->ints = NULL;
     vs->doubles = NULL;
     vs->strings = NULL;
-    vs->n = 0;
     vs->capacity = 0;
+    vs->n = 0;
+    vs->dims[0] = 0;
+    vs->dims[1] = 0;
 }
 
 
@@ -88,11 +93,49 @@ VECP alloc_vector(size_t n, vectype_t type) {
     return v;
 }
 
+
 void free_vector(VECP *v) {
     if (v->node != NULL)
         dllist_remove(&memstack, v->node);
     v->node = NULL;
+    v->ncols = 0;
+    v->nrows = 0;
 }
+
+VECP resize_vector(VECP *v, size_t newsize) {
+    if (newsize == 0) {
+        free_vector(v);
+        return *v;
+    }
+    if (newsize == v->node->vec->capacity) {
+        return *v;
+    }
+    switch (TYPEOF(*v)) {
+        case INTS_VEC:
+            chk_realloc((void**)&v->node->vec->ints, newsize * sizeof(int));
+            v->node->vec->data = v->node->vec->ints;
+            v->node->vec->n = newsize;
+            v->node->vec->capacity = newsize;
+            break;
+        case DOUBLES_VEC:
+            chk_realloc((void**)&v->node->vec->doubles, newsize * sizeof(double));
+            v->node->vec->data = v->node->vec->doubles;
+            v->node->vec->n = newsize;
+            v->node->vec->capacity = newsize;
+            break;
+        case STRINGS_VEC:
+            chk_realloc((void**)&v->node->vec->strings, newsize * sizeof(char*));
+            v->node->vec->data = v->node->vec->strings;
+            // n is unchanged until allocations of individual strings
+            v->node->vec->capacity = newsize;
+            break;
+        default:
+            fprintf(stderr, "resize_vector: unknown type: %d\n", TYPEOF(*v));
+            exit(1);
+    }
+    return *v;
+}
+
 
 size_t LENGTH(VECP v) {
     return v.node->vec->n;

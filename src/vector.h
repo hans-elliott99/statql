@@ -23,6 +23,7 @@ typedef struct VectorStruct {
     char **strings;         // pointer to data, if type is STRINGS_VEC
     size_t capacity;        // vector capacity / length
     size_t n;               // number of allocated elements (differs from capacity only for STRINGS_VEC)
+    size_t dims[2];         // dimensions - used for matrices - TODO: implement?
 } VectorStruct;
 
 void alloc_vector_struct(VectorStruct *vs, size_t nelem, vectype_t type);
@@ -36,6 +37,7 @@ typedef struct VECP {
 } VECP;
 
 VECP alloc_vector(size_t n, vectype_t type);
+VECP resize_vector(VECP *v, size_t newsize);
 void free_vector(VECP *v);
 
 int *INTEGER(VECP v);

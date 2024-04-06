@@ -508,12 +508,59 @@ VECP __add(VECP v1, VECP v2, int inplace) {
     return v3;
 }
 
-VECP add(VECP v1, VECP v2) {
+VECP add(const VECP v1, const VECP v2) {
     return __add(v1, v2, 0);
 }
 
-VECP set_add(VECP v1, VECP v2) {
+VECP set_add(VECP v1, const VECP v2) {
     return __add(v1, v2, 1);
+}
+
+
+VECP __subtract(VECP v1, VECP v2, int inplace) {
+    size_t n1 = LENGTH(v1);
+    size_t n2 = LENGTH(v2);
+    if (TYPEOF(v1) == STRINGS_VEC || TYPEOF(v2) == STRINGS_VEC) {
+        fprintf(stderr, "__subtract: not implemented for STRINGS_VEC\n");
+        exit(1);
+    }
+    if (n1 != n2 && n1 != 1 && n2 != 1) {
+        fprintf(stderr, "__subtract: lengths are not compatible\n");
+        exit(1);
+    }
+    VECP v3;
+    if (inplace) {
+        CAST_DOUBLE(v1);
+        v3 = v1;
+    } else {
+        v3 = alloc_same(n1 > n2 ? v1 : v2, DOUBLES_VEC);
+    }
+    if (n1 > n2) {
+        // n2 is the scalar
+        for (size_t i = 0; i < n1; ++i) {
+            // as_double casts integer vector data to double
+            DOUBLE(v3)[i] = as_double(v1, i) - as_double(v2, 0);
+        }
+    } else if (n2 > n1) {
+        // n1 is the scalar
+        for (size_t i = 0; i < n2; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, 0) - as_double(v2, i);
+        }
+    } else {
+        // both vectors, equal length
+        for (size_t i = 0; i < n1; ++i) {
+            DOUBLE(v3)[i] = as_double(v1, i) - as_double(v2, i);
+        }
+    }
+    return v3;
+}
+
+VECP subtract(const VECP v1, const VECP v2) {
+    return __subtract(v1, v2, 0);
+}
+
+VECP set_subtract(VECP v1, const VECP v2) {
+    return __subtract(v1, v2, 1);
 }
 
 
@@ -555,11 +602,11 @@ VECP __mul(VECP v1, VECP v2, int inplace) {
     return v3;
 }
 
-VECP mul(VECP v1, VECP v2) {
+VECP mul(const VECP v1, const VECP v2) {
     return __mul(v1, v2, 0);
 }
 
-VECP set_mul(VECP v1, VECP v2) {
+VECP set_mul(VECP v1, const VECP v2) {
     return __mul(v1, v2, 1);
 }
 
@@ -603,11 +650,11 @@ VECP __div(VECP v1, VECP v2, int inplace) {
     return v3;
 }
 
-VECP divide(VECP v1, VECP v2) {
+VECP divide(const VECP v1, const VECP v2) {
     return __div(v1, v2, 0);
 }
 
-VECP set_divide(VECP v1, VECP v2) {
+VECP set_divide(VECP v1, const VECP v2) {
     return __div(v1, v2, 1);
 }
 
@@ -660,10 +707,24 @@ void assert_matrix(const VECP m) {
     if (m.ncols == 0) {
         fprintf(stderr, "assert_matrix: ncols == 0, not a matrix\n");
         exit(1);
-    } else if (TYPEOF(m) != DOUBLES_VEC) {
-        fprintf(stderr, "assert_matrix: type != DOUBLES_VEC, not a matrix\n");
+    }
+}
+
+
+/*repurpose a matrix by resizing the underlying vector as needed*/
+VECP resize_matrix(VECP *m, size_t nrows, size_t ncols) {
+    assert_matrix(*m);
+    if (nrows == 0 || ncols == 0) {
+        fprintf(stderr, "resize_matrix: nrows or ncols == 0\n");
         exit(1);
     }
+    if (nrows == m->nrows && ncols == m->ncols) {
+        return *m;
+    }
+    resize_vector(m, nrows * ncols); // sets length to nrows * ncols
+    m->ncols = ncols;
+    m->nrows = nrows;
+    return *m;
 }
 
 double MATRIX_ELT(const VECP m, size_t i, size_t j) {
@@ -722,23 +783,34 @@ VECP matmul(const VECP m1, const VECP m2) {
         fprintf(stderr, "matmul: m1.ncols != m2.nrows\n");
         exit(1);
     }
-    VECP m3 = alloc_matrix(m1.nrows, m2.ncols);
+    VECP out = alloc_matrix(m1.nrows, m2.ncols);
+    double sum;
     for (size_t i = 0; i < m1.nrows; ++i) {
         for (size_t j = 0; j < m2.ncols; ++j) {
-            double sum = 0;
+            sum = 0;
             for (size_t k = 0; k < m1.ncols; ++k) {
                 sum += MATRIX_ELT(m1, i, k) * MATRIX_ELT(m2, k, j);
             }
-            SET_MATRIX_ELT(m3, i, j, sum);
+            SET_MATRIX_ELT(out, i, j, sum);
         }
     }
-    return m3;
+    return out;
 }
 
+/*
+    recycles m1 to store m3
+    HANS
+    TODO: undesirable behavior in the set...matrix functions because setting
+     new values for ncols and nrows requires input to be a pointer (ie, *VECP)
+     for the functions to work without assignment. So these produce diff behavior:
+        set_matmul(X, Y)     // ncols and nrows not updated
+        X = set_matmul(X, Y) // ncols and nrows updates as expected
+    Could add a dimension feature to the underlying vector struct to clean this
+    all up... this could be a good idea anyway.
+*/
 VECP set_matmul(VECP m1, const VECP m2) {
     VECP m3 = matmul(m1, m2);
-    m1.nrows = m3.nrows;
-    m1.ncols = m3.ncols;
+    m1 = resize_matrix(&m1, m3.nrows, m3.ncols);
     for (size_t i = 0; i < LENGTH(m1); ++i) {
         DOUBLE(m1)[i] = DOUBLE(m3)[i];
     }
@@ -784,14 +856,15 @@ VECP set_transp(VECP m) {
     return m;
 }
 
-
+/*Q^T Q*/
 VECP crossprod(const VECP m1, const VECP m2) {
     VECP mt = transp(m1);
     set_matmul(mt, m2);
     return mt;
 }
 
-VECP crossprodt(const VECP m1, const VECP m2) {
+/*Q Q^T*/
+VECP tcrossprod(const VECP m1, const VECP m2) {
     VECP mt = transp(m2);
     set_matmul(m1, mt);
     return mt;
@@ -811,6 +884,10 @@ void print_matrix(const VECP m) {
 }
 
 
+/*
+    Solve R u = y for u where R is an upper right triangular matrix, using back
+    substitution. Doesn't check for upper triangularity.
+*/
 VECP backsub_uppertri(const VECP R, const VECP y) {
     size_t p = ncol(R);
     VECP beta = alloc_vector(p, DOUBLES_VEC);
@@ -881,6 +958,27 @@ VECP invert_upper_right(const VECP R) {
     return Rinv;
 }
 
+
+// developing set_matmul...
+int main_00() {
+    init_memstack();
+    VECP X = alloc_matrix(5, 3);
+    set_fill_dbl(X, 1);
+
+    VECP Y = alloc_matrix(3, 2);
+    set_fill_dbl_rng(Y, 1, 1);
+
+    VECP Z = matmul(X, Y);
+    printf("Z:\n"); print_matrix(Z); putchar('\n');
+
+    X = set_matmul(X, Y);
+    printf("X:\n"); print_matrix(X); putchar('\n');
+
+    // printf("nrow: %zu, ncol: %zu\n", nrow(X), ncol(X));
+    return 0;
+}
+
+
 /*
     qr decomposition by gram schmidt to obtain least squares estimates
     TODO: check for singularity?
@@ -927,8 +1025,6 @@ int main() {
     VECP v, u, Rij, tmp;
     double val;
     for (size_t j = 0; j < p; ++j) {
-        printf("=====================================\n");
-        printf("2: memstack.len: %zu\n", memstack.len);
         v = set_asmatrix(MATRIX_COL(X, j), n, 1); // n x 1
         u = copyvec(v);
         if (j > 0) {
@@ -946,31 +1042,51 @@ int main() {
             }
         }
         // calculate R[j, j]
-        printf("u:\n"); print_matrix(u); putchar('\n');
         tmp = set_vsqrt(crossprod(u, u)); // 1 x n  X  n x 1
         val = DOUBLE(tmp)[0];
         SET_MATRIX_ELT(R, j, j, val);
-        printf("R_jj: %f\n", val);
         // calculate Q[, j]
         SET_MATRIX_COL(Q, j, DOUBLE(set_div_dbl(u, val)));
         free_vector(&tmp);
         free_vector(&v);
         free_vector(&u);
     }
-    printf("Q:\n"); print_matrix(Q); putchar('\n');
-    printf("R:\n"); print_matrix(R); putchar('\n');
     // calculate coefficients
     u = crossprod(Q, ymat);
     VECP beta = backsub_uppertri(R, u);
     printf("beta:\n"); print_matrix(beta); putchar('\n');
+
+    // calculate fitted values and residuals
+    /*yhat = Q Q^\top y*/
+    VECP yhat = transp(Q); // Qt
+    yhat = set_matmul(set_matmul(Q, yhat), ymat); // consumes Q
+    // set_asvector(yhat); // convert back to vector
+    printf("yhat:\n"); print_matrix(yhat); putchar('\n');
+    /*resid = ymat - yhat*/
+    // set_asvector(ymat); // convert back to vector
+    VECP resid = subtract(ymat, yhat);
+    printf("resid:\n"); print_matrix(resid); putchar('\n');
     if (free_y) free_vector(&ymat);
 
-    // calculate (X^t X)^-1
-    printf("Rinv\n");
-    printf("memstack.len: %zu\n", memstack.len);
+    // calculate sigma^2
+    set_div_dbl(set_pow2(resid), n - p);
+    double sigma2 = 0;
+    for (size_t i = 0; i < LENGTH(resid); ++i) sigma2 += DOUBLE(resid)[i];
+    printf("sigma: %f\n", sqrt(sigma2));
+    // calculate (X^t X)^-1 and SEs
+    /*(X^tX)^{-1} = R^{-1} (R^{-1})^t*/
     VECP Rinv = invert_upper_right(R);
-    printf("memstack.len: %zu\n", memstack.len);
-    print_matrix(Rinv);
+    printf("Rinv:\n"); print_matrix(Rinv); putchar('\n');
+    VECP XtXinv = set_matmul(Rinv, transp(Rinv)); // consumes Rinv
+    printf("XtXinv:\n"); print_matrix(XtXinv); putchar('\n');
+    // calculate SEs
+    VECP SEs = alloc_vector(p, DOUBLES_VEC);
+    for (size_t i = 0; i < p; ++i) {
+        DOUBLE(SEs)[i] = sqrt(MATRIX_ELT(XtXinv, i, i) * sigma2);
+        printf("beta[%zu]: %f\t", i, DOUBLE(beta)[i]);
+        printf("SEs[%zu]: %f\n", i, DOUBLE(SEs)[i]);
+    }
+    printf("\n2: memstack.len: %zu\n", memstack.len);
     return 0;
 }
 
