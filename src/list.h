@@ -1,11 +1,11 @@
 #ifndef _LIST_H
 #define _LIST_H
 
-#include "vector.h" //VectorStruct
+#include "array.h" //ArrayStruct
 
 /*Doubly Linked List*/
 struct DLNode {
-    VectorStruct *vec;
+    ArrayStruct *arr;
     struct DLNode *next;
     struct DLNode *prev;
 };

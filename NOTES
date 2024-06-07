@@ -8,20 +8,21 @@ Necessary linked libraries for sqlite determined from:
 https://www.sqlite.org/howtocompile.html
 
 
+# Notes
 
 Vectors:  
 The key data structure for this program is a "vector" which is inspired by R vectors, in that most objects needed for math operations can be treated as a vector.  
 (They are actually fixed length currently but will probably become dynamic vectors eventually... but more often than not for mathematical/statistical operations we know the size of inputs and outputs and can preallocate).  
 
-Further inspired by R, the vector API is built around the VECP struct, which is essentially just a pointer to the actual vector data (sort of equivalent to R's SEXP). The actual data is stored in the VectorStruct (sort of equivalent to R's SEXPREC), which can be either an INTS_VEC, DOUBLES_VEC, or STRINGS_VEC, and data is accessed using public functions.  
+Further inspired by R, the vector API is built around the ARRP struct, which is essentially just a pointer to the actual vector data (sort of equivalent to R's SEXP). The actual data is stored in the ArrayStruct (sort of equivalent to R's SEXPREC), which can be either an INTS_ARR, DOUBLES_ARR, or STRINGS_ARR, and data is accessed using public functions.  
 
-Vector allocation is done on a global memory stack ("memstack") which is a linked list of memory blocks. This makes it easier to free all memory at the end of the program and helps the API because it allows functions to return VECP "objects" to the user. A vector can still be freed by the user when a vector is no longer needed.  
+Vector allocation is done on a global memory stack ("memstack") which is a linked list of memory blocks. This makes it easier to free all memory at the end of the program and helps the API because it allows functions to return ARRP "objects" to the user. A vector can still be freed by the user when a vector is no longer needed.  
 
 
 Matrices:  
-Matrices are fundamentally just vectors with additional dimension information. The actual data is still stored in the VectorStruct, and an element can be accessed using indexing i * ncols + j. All VECP have nrows and ncols fields but they are set to 0 for vectors and >0 for matrices.  
+Matrices are fundamentally just vectors with additional dimension information. The actual data is still stored in the ArrayStruct, and an element can be accessed using indexing i * ncols + j. All ARRP have nrows and ncols fields but they are set to 0 for vectors and >0 for matrices.  
 
-Should we use VECP for matrices too? Could have nrow and ncol fields and just keep nrow = 0 for vectors...
+Should we use ARRP for matrices too? Could have nrow and ncol fields and just keep nrow = 0 for vectors...
 
 then element wise vector operations would apply as element wise operations for matrices too...  
 i.e., vectors are special cases of matrices.
@@ -45,3 +46,11 @@ https://stackoverflow.com/questions/1923837/how-to-use-nan-and-inf-in-c
     - more importantly, I like what it enables from a design perspective. all objects live in this global list and users just get pointers to these objects. it abstracts away the memory management a bit, and also makes it easy to pass around objects, allowing the backend to be very intentional about when data is modified in place or copied into a new object.
         - this idea is obviously inspired by R's SEXP. It's interesting to think about why a garbage collector is needed for R, where a whole prog. lang. is built on top of this idea - if you don't want the user to have to worry about memory management, you don't want the global memory stack to get cluttered up over time... for this program it makes sense to stay "lower level" and manually free intermediate objects when they are no longer needed. R's GC just eliminates the need to think about this... (also I'm sure there are other interesting reasons for the GC, will have to research some day)
     
+
+
+
+
+2024-06-02
+
+Could be nice to have 2 global memory stacks - one for internal use and one for the end user?  
+

@@ -49,6 +49,8 @@ clean:
 	rm -rf $(TARGET)
 	rm -rf $(BIN_DIR)/test
 
+# sqlite takes longer to build and is not typically modified so no need to
+# rebuild usually
 clean-sqlite:
 	find $(OBJ_DIR) -type f -name "*.o" -delete
 	find $(OBJ_DIR) -type f -name "*.d" -delete

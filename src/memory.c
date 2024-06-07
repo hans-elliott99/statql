@@ -36,10 +36,12 @@ void chk_realloc(void **p, size_t memsize) {
         chk_free(*p);
         return;
     }
-    *p = realloc(*p, memsize);
-    if (!*p) {
+    void *tmp = realloc(*p, memsize);
+    if (!tmp) {
         fprintf(stderr, "chk_realloc: memory allocation failed!\n");
         exit(1);
+    } else {
+        *p = tmp;
     }
 }
 

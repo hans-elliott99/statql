@@ -19,6 +19,6 @@ void free_memstack(void) {
     for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
         dllist_remove(&memstack, n);
     }
-    printf("  Final memstack len: %zu\n", memstack.len);
-    printf("  Memory leaks: %d\n", mem);
+    printf("\n  ~Final memstack len: %zu\n", memstack.len);
+    printf("  ~Memory leaks: %d\n", mem);
 }
