@@ -4,6 +4,7 @@
 
 struct DLList memstack = {/*head=*/NULL, /*tail=*/NULL, /*len=*/0};
 int mem = 0;
+uint32_t global_seed = 123; //TODO: implement usage in r.v. functions
 
 
 void init_memstack(void) {

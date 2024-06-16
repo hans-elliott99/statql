@@ -5,14 +5,9 @@ INCLUDE_DIR := ./src #eventually put headers in include/, in src for intellisens
 TEST_DIR := ./tests
 MAIN_NAME := main
 
-SRC = $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/sqlite/*.c)
+SRC = $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/**/*.c)
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 TARGET = $(BIN_DIR)/$(MAIN_NAME)
-
-# gcc -I"/usr/share/R/include" -DNDEBUG
-# -fpic  -g -O2 -fdebug-prefix-map=/build/r-base-DdVjkr/r-base-4.3.2=.
-# -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2
-# -UNDEBUG -Wall -pedantic -g -O0 -fdiagnostics-color=always -c grepvec.c -o grepvec.o
 
 CC := gcc
 CPPFLAGS := -I$(INCLUDE_DIR) -MMD -MP #c preprocessor
@@ -50,7 +45,7 @@ clean:
 	rm -rf $(BIN_DIR)/test
 
 # sqlite takes longer to build and is not typically modified so no need to
-# rebuild usually
+#   rebuild usually
 clean-sqlite:
 	find $(OBJ_DIR) -type f -name "*.o" -delete
 	find $(OBJ_DIR) -type f -name "*.d" -delete

@@ -1,0 +1,29 @@
+#
+# plot histogram
+#
+# gnuplot -e "file='./gnuplot/tmp.dat'" gnuplot/plot_hist
+
+if (!exists("file")) {
+    file="./gnuplot/tmp.dat"
+}
+print "data file:"
+print file
+
+set terminal png
+set output "./gnuplot/gplot.png"
+
+
+bin(x,width) = width*floor(x/width)
+binwidth = 0.1
+set xrange [0:1]
+
+#style
+set style fill transparent solid 0.5 border lt -1
+set title "Pseudo-random U(0, 1) Deviates from Mersenne-Twister"
+set xlabel "x"
+set ylabel "Frequency"
+set xtics 0.2
+set boxwidth binwidth
+
+
+plot file using (bin($1, binwidth)):(1.0) smooth freq with boxes notitle

@@ -1,8 +1,9 @@
-#ifndef _ARRAY_H
-#define _ARRAY_H
+#ifndef __ARRAY_H
+#define __ARRAY_H
 
 
 #include <stdlib.h> // size_t
+#include <stdint.h> // uint32_t
 
 
 /*
@@ -66,6 +67,9 @@ arrtype_t arrtype(ARRP v);
 void* arrp_data(ARRP v); // generic version of real/integer
 ARRP alloc_same(const ARRP v, arrtype_t type);
 ARRP copyarr(const ARRP v);
+int dims_eq(ARRP v1, ARRP v2);
+int ints_eq(ARRP v1, ARRP v2);
+int reals_eq_tol(ARRP v1, ARRP v2, double tol);
 
 /*
     ARRAY OPERATIONS
@@ -83,6 +87,8 @@ ARRP set_div_num(ARRP v, double scalar);
         FILL VALUES
 */
 ARRP set_fill_num(ARRP v, double start, double step);
+ARRP set_rand_unif(ARRP v, uint32_t seed);
+ARRP set_fill_str(ARRP v, const char *val);
 /*
     ELEMENT-WISE FUNCTIONS
 */
@@ -101,11 +107,13 @@ ARRP mul(ARRP v1, ARRP v2);
 ARRP set_mul(ARRP v1, ARRP v2);
 ARRP divide(ARRP v1, ARRP v2);
 ARRP set_divide(ARRP v1, ARRP v2);
-int dims_eq(ARRP v1, ARRP v2);
-int ints_eq(ARRP v1, ARRP v2);
-int reals_eq_tol(ARRP v1, ARRP v2, double tol);
+/*
+    MATIRX OPERATIONS
+*/
+ARRP matmul(const ARRP m1, const ARRP m2);
+ARRP set_matmul(ARRP m1, ARRP m2);
 
 
 
 
-#endif // _ARRAY_H
+#endif // __ARRAY_H

@@ -13,6 +13,19 @@
 #include "array.h"
 #include "list.h"
 #include "memory.h"
+#include "rand/rng.h"
+
+
+void print_array(const ARRP m) {
+    size_t nrow = dims(m)[0];
+    size_t ncol = dims(m)[1];
+    for (size_t i = 0; i < nrow; ++i) {
+        for (size_t j = 0; j < ncol; ++j) {
+            printf("%f\t", real(m)[i * ncol + j]);
+        }
+        putchar('\n');
+    }
+}
 
 
 int check_dbls_equal(double a, double b, const char *msg) {
@@ -35,14 +48,14 @@ int check_arrp_equal(ARRP a, ARRP b, const char *msg) {
     return fail; // flag if not equal
 }
 
-void test_title(const char *msg) {
+void _test_title(const char *msg) {
     int sl = strlen(msg);
     for (int i=0; i < sl; ++i) putchar('-');
     printf("\n%s\n", msg);
     for (int i=0; i < sl; ++i) putchar('-');
     putchar('\n');
 }
-void test_summary(int failed) {
+void _test_summary(int failed) {
     if (failed > 0) {
         printf(" xxx   %d %s failed\n", failed, failed == 1 ? "test" : "tests");
     } else {
@@ -51,7 +64,7 @@ void test_summary(int failed) {
 }
 
 int test_scalar_ops() {
-    test_title("SCALAR OPS");
+    _test_title("SCALAR OPS");
     int test = 0;
     ARRP x=empty(), y=empty(), z=empty();
     // add
@@ -86,12 +99,12 @@ int test_scalar_ops() {
     test += check_dbls_equal(reals_elt(y, 0, 0), 1.0, "divide");
     free_array(&x); free_array(&y); free_array(&z);
 
-    test_summary(test);
+    _test_summary(test);
     return test;
 }
 
 int test_array_fillers() {
-    test_title("FILLERS");
+    _test_title("FILLERS");
     int test = 0;
     ARRP x=empty(), y=empty(), z=empty();
 
@@ -111,13 +124,13 @@ int test_array_fillers() {
         test += check_arrp_equal(x, y, "set_fill_num reals");
     free_array(&x); free_array(&y); free_array(&z);
 
-    test_summary(test);
+    _test_summary(test);
     return test;
 
 }
 
 int test_elt_functions() {
-    test_title("ELEMENT-WISE FUNCTIONS");
+    _test_title("ELEMENT-WISE FUNCTIONS");
     int test = 0;
     ARRP x=empty(), y=empty(), z=empty();
 
@@ -137,13 +150,13 @@ int test_elt_functions() {
         test += check_arrp_equal(x, y, "arrp_sqrt");
     free_array(&x); free_array(&y); free_array(&z);
 
-    test_summary(test);
+    _test_summary(test);
     return test;
 
 }
 
 int test_array_ops() {
-    test_title("ARRAY OPS");
+    _test_title("ARRAY OPS");
     int test = 0;
     ARRP x=empty(), y=empty(), z=empty();
     // add
@@ -180,24 +193,88 @@ int test_array_ops() {
         test += check_dbls_equal(reals_elt(y, 0, 0), 1.0, "divide");
     free_array(&x); free_array(&y); free_array(&z);
 
-    test_summary(test);
+    _test_summary(test);
+    return 0;
+}
+
+
+int test_matmul() {
+    _test_title("MATMUL");
+    int test = 0;
+    ARRP x=empty(), y=empty(), z=empty(), z_tru=empty();
+
+    // matmul
+    x = alloc_array(REALS_ARR, 2, 2); set_fill_num(x, 1, 1); // 1, 2, 3, 4
+    z = matmul(x, x);
+    z_tru = alloc_array(REALS_ARR, 2, 2);
+        real(z_tru)[0] =  7; real(z_tru)[1] = 10;
+        real(z_tru)[2] = 15; real(z_tru)[3] = 22; 
+    test += check_arrp_equal(z, z_tru, "matmul");
+    free_array(&z); free_array(&z_tru);
+
+    y = alloc_array(REALS_ARR, 2, 3); set_fill_num(y, 2, 2); // 2,4,6,8,10,12
+    set_matmul(x, y);
+    z_tru = alloc_array(REALS_ARR, 2, 3);
+        real(z_tru)[0] = 18; real(z_tru)[1] = 24; real(z_tru)[2] = 30;
+        real(z_tru)[3] = 38; real(z_tru)[4] = 52; real(z_tru)[5] = 66;
+
+    print_array(x);
+    
+    test += check_arrp_equal(x, z_tru, "set_matmul");
+    free_array(&x); free_array(&y); free_array(&z_tru);
+
+    _test_summary(test);
+    return test;
+
+}
+
+
+int test_rand() {
+    _test_title("RAND");
+    int test = 0;
+    ARRP x1 = alloc_array(REALS_ARR, 1, 10);
+    ARRP x2 = alloc_array(REALS_ARR, 1, 10);
+    MTRand r = seedRand(1234);
+    for (int i=0; i < length(x1); ++i)
+        real(x1)[i] = genRand(&r);
+    
+    set_rand_unif(x2, 1234);
+    test += check_arrp_equal(x1, x2, "set_rand_unif");
+    free_array(&x1); free_array(&x2);
+
+    _test_summary(test);
+    return test;
+}
+
+
+
+#include "rand/rng.h"
+int example_rand() {
+    MTRand r = seedRand(1234);
+    for (int i=0; i < 10000; ++i) {
+        printf("%f\n", genRand(&r));
+    }
     return 0;
 }
 
 
 int main() {
-    init_memstack();
+    // init_memstack();
 
-    int failed = 0;
-    failed += test_scalar_ops();
-    failed += test_array_fillers();
-    failed += test_elt_functions();
-    failed += test_array_ops();
+    // int failed = 0;
+    // failed += test_scalar_ops();
+    // failed += test_array_fillers();
+    // failed += test_elt_functions();
+    // failed += test_array_ops();
+    // failed += test_matmul();
+    // failed += test_rand();
 
-    printf("%s %d %s failed\n",
-            failed == 0 ? "" : "!!!",
-            failed,
-            failed == 1 ? "test" : "tests");
+    // printf("\n%s %d %s failed\n",
+    //         failed == 0 ? "" : "!!!",
+    //         failed,
+    //         failed == 1 ? "test" : "tests");
+
+    example_rand();
     return 0;
 }
 

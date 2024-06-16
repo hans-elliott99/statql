@@ -414,6 +414,53 @@ ARRP copyarr(const ARRP v) {
 }
 
 
+int dims_eq(ARRP v1, ARRP v2) {
+    size_t *dims1 = dims(v1);
+    size_t *dims2 = dims(v2);
+    return dims1[0] == dims2[0] && dims1[1] == dims2[1];
+}
+
+/*check if 2 INTS_ARR are equivalent - including if they have same dimensions*/
+int ints_eq(ARRP v1, ARRP v2) {
+    if (arrtype(v1) != INTS_ARR || arrtype(v2) != INTS_ARR) {
+        fprintf(stderr, "ints_eq: received non-INTS_ARR array\n");
+        exit(1);
+    }
+    size_t n1 = length(v1);
+    size_t n2 = length(v2);
+    if (n1 != n2) {
+        return 0;
+    }
+    for (size_t i = 0; i < n1; ++i) {
+        if (integer(v1)[i] != integer(v2)[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*check if 2 REALS_ARR are equivalent - including if same dimensions - up to
+  some tolerance*/
+int reals_eq_tol(ARRP v1, ARRP v2, double tol) {
+    if (arrtype(v1) != REALS_ARR || arrtype(v2) != REALS_ARR) {
+        fprintf(stderr, "reals_eq_tol: received non-REALS_ARR array\n");
+        exit(1);
+    }
+    size_t n1 = length(v1);
+    size_t n2 = length(v2);
+    if (n1 != n2) {
+        return 0;
+    }
+    for (size_t i = 0; i < n1; ++i) {
+        if (fabs(real(v1)[i] - real(v2)[i]) > tol) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+
+
 
 /*
     ARRAY OPERATIONS
@@ -526,6 +573,20 @@ ARRP set_fill_num(ARRP v, double start, double step) {
         exit(1);
         break;
     }
+    return v;
+}
+
+
+
+#include <rand/rng.h>
+ARRP set_rand_unif(ARRP v, uint32_t seed) {
+    if (arrtype(v) != REALS_ARR) {
+        fprintf(stderr, "set_rand_unif: must be REALS_ARR\n");
+        exit(1);
+    }
+    MTRand r = seedRand(seed);
+    for (size_t i=0; i < length(v); ++i)
+        real(v)[i] = genRand(&r);
     return v;
 }
 
@@ -852,48 +913,6 @@ ARRP set_divide(ARRP v1, ARRP v2) {
 }
 
 
-int dims_eq(ARRP v1, ARRP v2) {
-    size_t *dims1 = dims(v1);
-    size_t *dims2 = dims(v2);
-    return dims1[0] == dims2[0] && dims1[1] == dims2[1];
-}
-
-int ints_eq(ARRP v1, ARRP v2) {
-    if (arrtype(v1) != INTS_ARR || arrtype(v2) != INTS_ARR) {
-        fprintf(stderr, "ints_eq: received non-INTS_ARR array\n");
-        exit(1);
-    }
-    size_t n1 = length(v1);
-    size_t n2 = length(v2);
-    if (n1 != n2) {
-        return 0;
-    }
-    for (size_t i = 0; i < n1; ++i) {
-        if (integer(v1)[i] != integer(v2)[i]) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-int reals_eq_tol(ARRP v1, ARRP v2, double tol) {
-    if (arrtype(v1) != REALS_ARR || arrtype(v2) != REALS_ARR) {
-        fprintf(stderr, "reals_eq_tol: received non-REALS_ARR array\n");
-        exit(1);
-    }
-    size_t n1 = length(v1);
-    size_t n2 = length(v2);
-    if (n1 != n2) {
-        return 0;
-    }
-    for (size_t i = 0; i < n1; ++i) {
-        if (fabs(real(v1)[i] - real(v2)[i]) > tol) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
 
 /*
         MATRIX OPERATIONS
@@ -1031,6 +1050,10 @@ ARRP set_col(ARRP v, size_t dim1, ARRP vcol) {
 
 
 ARRP matmul(const ARRP m1, const ARRP m2) {
+    if (arrtype(m1) != REALS_ARR || arrtype(m2) != REALS_ARR) {
+        fprintf(stderr, "matmul: only REALS_ARR supported\n");
+        exit(1);
+    }
     if (dims(m1)[1] != dims(m2)[0]) { // m1 cols must eq m2 rows
         fprintf(stderr, "__matmul: dimensions are not compatible\n");
         exit(1);
@@ -1046,13 +1069,13 @@ ARRP matmul(const ARRP m1, const ARRP m2) {
             set_reals_elt(out, i, j, sum);
         }
     }
+    return out;
 }
 
 ARRP set_matmul(ARRP m1, ARRP m2) {
     // compute product
     ARRP prod = matmul(m1, m2);
     // reshape m1 and copy product into it
-    cast_reals(m1);
     m1 = resize_array(m1, length(prod));
     m1.node->arr->dims[0] = dims(prod)[0];
     m1.node->arr->dims[1] = dims(prod)[1];
@@ -1063,4 +1086,8 @@ ARRP set_matmul(ARRP m1, ARRP m2) {
     free_array(&prod);
     return m1;
 }
+
+
+
+
 
