@@ -34,8 +34,8 @@ void dllist_remove(struct DLList *list, struct DLNode *node) {
     } else {
         node->next->prev = node->prev;
     }
-    free_vector_struct(node->vec);
-    chk_free(node->vec);
+    free_arraystruct_data(node->arr);
+    chk_free(node->arr);
     chk_free(node);
     list->len--;
 }
@@ -52,8 +52,8 @@ void dllist_pop(struct DLList *list) {
         list->tail = last->prev;
         list->tail->next = NULL;
     }
-    free_vector_struct(last->vec);
-    chk_free(last->vec);
+    free_arraystruct_data(last->arr);
+    chk_free(last->arr);
     chk_free(last);
     list->len--;
 }
