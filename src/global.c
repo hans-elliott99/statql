@@ -17,8 +17,10 @@ void init_memstack(void) {
 
 // atexit free all consumed memory
 void free_memstack(void) {
-    for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
-        dllist_remove(&memstack, n);
+    if (memstack.len > 0) {
+        for (struct DLNode *n = memstack.tail; n != NULL; n = n->prev) {
+            dllist_remove(&memstack, n);
+        }
     }
     printf("\n  ~Final memstack len: %zu\n", memstack.len);
     printf("  ~Memory leaks: %d\n", mem);

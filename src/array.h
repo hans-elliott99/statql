@@ -40,6 +40,7 @@ typedef struct ARRP {
 } ARRP;
 
 ARRP alloc_array(arrtype_t type, size_t dim0, size_t dim1);
+ARRP alloc_row_array(arrtype_t type, size_t length);
 ARRP resize_array(ARRP v, size_t newsize);
 ARRP empty();
 void free_array(ARRP *v);
@@ -111,7 +112,11 @@ ARRP set_divide(ARRP v1, ARRP v2);
     MATIRX OPERATIONS
 */
 ARRP matmul(const ARRP m1, const ARRP m2);
-ARRP set_matmul(ARRP m1, ARRP m2);
+ARRP set_matmul(ARRP m1, const ARRP m2);
+ARRP transpose(const ARRP v);
+ARRP set_transpose(ARRP v);
+ARRP crossprod(ARRP x, ARRP y);
+ARRP tcrossprod(ARRP x, ARRP y);
 
 
 

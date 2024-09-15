@@ -51,11 +51,11 @@ void check_valid_dims(size_t *dims, size_t ndim) {
 
 void check_valid_ix(size_t dims[2], size_t ix[2]) {
     if (ix[0] < 0 || ix[0] >= dims[0]) {
-        fprintf(stderr, "check_valid_ix: ix[0] out of bounds\n");
+        fprintf(stderr, "Error: check_valid_ix: ix[0] out of bounds\n");
         exit(1);
     }
     if (ix[1] < 0 || ix[1] >= dims[1]) {
-        fprintf(stderr, "check_valid_ix: ix[1] out of bounds\n");
+        fprintf(stderr, "Error: check_valid_ix: ix[1] out of bounds\n");
         exit(1);
     }
 }
@@ -129,6 +129,11 @@ ARRP alloc_array(arrtype_t type, size_t dim0, size_t dim1) {
     v.node->arr = chk_malloc(sizeof(ArrayStruct));
     dllist_append(&memstack, v.node);
     alloc_array_struct(v.node->arr, type, dim0, dim1);
+    return v;
+}
+
+ARRP alloc_row_array(arrtype_t type, size_t length) {
+    ARRP v = alloc_array(type, 1, length);
     return v;
 }
 
@@ -1072,7 +1077,7 @@ ARRP matmul(const ARRP m1, const ARRP m2) {
     return out;
 }
 
-ARRP set_matmul(ARRP m1, ARRP m2) {
+ARRP set_matmul(ARRP m1, const ARRP m2) {
     // compute product
     ARRP prod = matmul(m1, m2);
     // reshape m1 and copy product into it
@@ -1088,6 +1093,61 @@ ARRP set_matmul(ARRP m1, ARRP m2) {
 }
 
 
+ARRP transpose(const ARRP v) {
+    size_t nrow = dims(v)[0];
+    size_t ncol = dims(v)[1];
+    ARRP v2 = alloc_array(arrtype(v), ncol, nrow);
+    for (size_t i = 0; i < nrow; ++i) {
+        for (size_t j = 0; j < ncol; ++j) {
+            switch (arrtype(v))
+            {
+            case INTS_ARR:
+                set_ints_elt(v2, j, i, ints_elt(v, i, j));
+                break;
+            case REALS_ARR:
+                set_reals_elt(v2, j, i, reals_elt(v, i, j));
+                break;
+            case STRINGS_ARR:
+                set_strings_elt(v2, j, i, strings_elt(v, i, j));
+                break;
+            default:
+                fprintf(stderr, "transpose: unsupported type: %s\n", arrtype_str(arrtype(v)));
+                exit(1);
+                break;
+            }
+        }
+    }
+    return v2;
+}
 
 
+ARRP set_transpose(ARRP v) {
+    // perform transpose
+    ARRP tmp = transpose(v);
+    // reshape v and copy transposed into it
+    v = resize_array(v, length(tmp));
+    v.node->arr->dims[0] = dims(tmp)[0];
+    v.node->arr->dims[1] = dims(tmp)[1];
+    for (size_t i=0; i < length(tmp); ++i) {
+        real(v)[i] = real(tmp)[i];
+    }
+    // discard temp array
+    free_array(&tmp);
+    return v;
+}
+
+/*X'Y*/
+ARRP crossprod(const ARRP x, const ARRP y) {
+    ARRP out = transpose(x);
+    set_matmul(out, y);
+    return out;
+}
+
+/*XY'*/
+ARRP tcrossprod(const ARRP x, const ARRP y) {
+    ARRP yt = transpose(y);
+    ARRP out = matmul(x, yt);
+    free_array(&yt);
+    return out;
+}
 
